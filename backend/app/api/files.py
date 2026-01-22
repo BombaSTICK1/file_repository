@@ -104,8 +104,8 @@ async def upload_new_version(
     db.add(db_version)
     db.commit()
 
+    # Возвращаем данные файла
     version_count = db.query(FileVersion).filter(FileVersion.file_id == file_id).count()
-
     return {
         "id": db_file.id,
         "name": db_file.name,
@@ -139,3 +139,35 @@ def download_file_version(file_id: int, version_number: int, db: Session = Depen
         raise HTTPException(status_code=404, detail="File not found on disk")
 
     return FileResponse(path=version.file_path, filename=f"file_v{version_number}.bin")
+
+@router.get("/{file_id}/versions")
+def get_file_versions(file_id: int, db: Session = Depends(get_db)):
+    versions = db.query(FileVersion)\
+                 .filter(FileVersion.file_id == file_id)\
+                 .order_by(FileVersion.version_number)\
+                 .all()
+    return [
+        {
+            "id": v.id,
+            "version_number": v.version_number,
+            "created_at": v.created_at.isoformat() if v.created_at else None
+        }
+        for v in versions
+    ]
+# backend/app/api/files.py
+@router.delete("/{file_id}")
+def delete_file(file_id: int, db: Session = Depends(get_db)):
+    file = db.query(File).filter(File.id == file_id).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Удаляем все версии с диска
+    versions = db.query(FileVersion).filter(FileVersion.file_id == file_id).all()
+    for ver in versions:
+        if os.path.exists(ver.file_path):
+            os.remove(ver.file_path)
+        db.delete(ver)
+    
+    db.delete(file)
+    db.commit()
+    return {"message": "File deleted"}

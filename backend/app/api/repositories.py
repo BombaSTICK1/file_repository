@@ -1,0 +1,287 @@
+# backend/app/api/repositories.py
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import Repository, Folder, File, FileVersion
+from pydantic import BaseModel
+import shutil
+import zipfile
+from pathlib import Path
+import os
+
+
+router = APIRouter()
+
+# Путь к хранилищу файлов
+STORAGE_PATH = Path("storage")
+STORAGE_PATH.mkdir(exist_ok=True)
+
+# Схемы Pydantic
+class RepositoryCreate(BaseModel):
+    name: str
+
+class RepositoryOut(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+# Метод для рекурсивного преобразования папки в словарь
+def folder_to_dict(folder):
+    return {
+        "id": folder.id,
+        "name": folder.name,
+        "parent_id": folder.parent_id,
+        "children": [folder_to_dict(child) for child in folder.children],
+        "files": [
+            {
+                "id": f.id,
+                "name": f.name,
+                "version_count": len(f.versions)
+            }
+            for f in folder.files
+        ]
+    }
+
+# 1. Создать репозиторий
+@router.post("/", response_model=RepositoryOut)
+def create_repository(repo: RepositoryCreate, db: Session = Depends(get_db)):
+    db_repo = Repository(name=repo.name)
+    db.add(db_repo)
+    db.commit()
+    db.refresh(db_repo)
+    return db_repo
+
+# 2. Получить список репозиториев
+@router.get("/", response_model=list[RepositoryOut])
+def get_repositories(db: Session = Depends(get_db)):
+    return db.query(Repository).all()
+
+# 3. Получить дерево репозитория
+@router.get("/{repo_id}/tree")
+def get_repository_tree(repo_id: int, db: Session = Depends(get_db)):
+    # Проверяем существование репозитория
+    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    
+    # Получаем корневые папки репозитория
+    root_folders = db.query(Folder)\
+                     .filter(Folder.repository_id == repo_id, Folder.parent_id.is_(None))\
+                     .all()
+    
+    return [folder_to_dict(f) for f in root_folders]
+
+# 4. Загрузить ZIP-архив в репозиторий
+@router.post("/{repo_id}/upload-zip")
+async def upload_repo_zip(
+    repo_id: int,
+    file: UploadFile = File(),
+    db: Session = Depends(get_db)
+):
+    # Проверяем существование репозитория
+    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    
+    # Проверяем расширение файла
+    if not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Only ZIP files are allowed")
+    
+    # Сохраняем ZIP во временную папку
+    zip_path = STORAGE_PATH / f"temp_{repo_id}_{file.filename}"
+    with open(zip_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    # Папка для распаковки
+    extract_path = STORAGE_PATH / f"extract_{repo_id}"
+    extract_path.mkdir(exist_ok=True)
+    
+    try:
+        # Распаковываем архив
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_path)
+        
+        def create_structure(path: Path, repo_id: int, base_path: Path, db: Session):
+            """
+            Рекурсивно обрабатывает распакованную директорию
+            """
+            # Получаем все элементы в текущей директории
+            items = list(path.iterdir())
+            
+            for item in items:
+                if item.is_dir():
+                    # Вычисляем относительный путь от корня распаковки
+                    rel_path = item.relative_to(base_path)
+                    folder_path_str = str(rel_path).replace("\\", "/")
+                    
+                    # Проверяем существование папки
+                    existing_folder = db.query(Folder).filter(
+                        Folder.repository_id == repo_id,
+                        Folder.path == folder_path_str
+                    ).first()
+                    
+                    if not existing_folder:
+                        # Находим родительскую папку
+                        parent_folder_id = None
+                        if str(rel_path.parent) != ".":
+                            parent_path = str(rel_path.parent).replace("\\", "/")
+                            parent_folder = db.query(Folder).filter(
+                                Folder.repository_id == repo_id,
+                                Folder.path == parent_path
+                            ).first()
+                            if parent_folder:
+                                parent_folder_id = parent_folder.id
+                        
+                        # Создаём новую папку
+                        db_folder = Folder(
+                            name=item.name,
+                            parent_id=parent_folder_id,
+                            repository_id=repo_id,
+                            path=folder_path_str
+                        )
+                        db.add(db_folder)
+                        db.flush()
+                        db.refresh(db_folder)
+                    else:
+                        db_folder = existing_folder
+                    
+                    # Рекурсивно обрабатываем содержимое
+                    create_structure(item, repo_id, base_path, db)
+                    
+                else:
+                    # Обработка файла
+                    rel_path = item.relative_to(base_path)
+                    file_path_str = str(rel_path).replace("\\", "/")
+                    
+                    # Ищем существующий файл
+                    existing_file = db.query(File).filter(
+                        File.repository_id == repo_id,
+                        File.path == file_path_str
+                    ).first()
+                    
+                    if existing_file:
+                        # Новая версия
+                        last_version = db.query(FileVersion)\
+                            .filter(FileVersion.file_id == existing_file.id)\
+                            .order_by(FileVersion.version_number.desc())\
+                            .first()
+                        new_version_number = (last_version.version_number + 1) if last_version else 1
+                        
+                        file_dir = STORAGE_PATH / str(existing_file.id)
+                        file_dir.mkdir(parents=True, exist_ok=True)
+                        version_path = file_dir / f"v{new_version_number}.bin"
+                        shutil.copy2(item, version_path)
+                        
+                        db_version = FileVersion(
+                            file_id=existing_file.id,
+                            version_number=new_version_number,
+                            file_path=str(version_path)
+                        )
+                        db.add(db_version)
+                        
+                    else:
+                        # Новый файл
+                        parent_folder_id = None
+                        if str(rel_path.parent) != ".":
+                            parent_path = str(rel_path.parent).replace("\\", "/")
+                            parent_folder = db.query(Folder).filter(
+                                Folder.repository_id == repo_id,
+                                Folder.path == parent_path
+                            ).first()
+                            if parent_folder:
+                                parent_folder_id = parent_folder.id
+                        
+                        db_file = File(
+                            name=item.name,
+                            path=file_path_str,
+                            folder_id=parent_folder_id,
+                            repository_id=repo_id
+                        )
+                        db.add(db_file)
+                        db.flush()
+                        db.refresh(db_file)
+                        
+                        file_dir = STORAGE_PATH / str(db_file.id)
+                        file_dir.mkdir(parents=True, exist_ok=True)
+                        version_path = file_dir / "v1.bin"
+                        shutil.copy2(item, version_path)
+                        
+                        db_version = FileVersion(
+                            file_id=db_file.id,
+                            version_number=1,
+                            file_path=str(version_path)
+                        )
+                        db.add(db_version)
+        
+        # Внутри try блока после распаковки:
+        create_structure(extract_path, repo_id, extract_path, db)
+        db.commit()
+        
+        return {"message": "Repository structure uploaded successfully"}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error processing ZIP: {str(e)}")
+    
+    finally:
+        # Удаляем временные файлы
+        if zip_path.exists():
+            zip_path.unlink()
+        if extract_path.exists():
+            shutil.rmtree(extract_path)
+
+# backend/app/api/repositories.py
+@router.delete("/{repo_id}")
+def delete_repository(repo_id: int, db: Session = Depends(get_db)):
+    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    
+    # Удаляем связанные файлы и папки (каскадное удаление)
+    db.query(Folder).filter(Folder.repository_id == repo_id).delete()
+    db.query(File).filter(File.repository_id == repo_id).delete()
+    db.delete(repo)
+    db.commit()
+    return {"message": "Repository deleted"}
+
+
+@router.post("/{repo_id}/upload-file")
+async def upload_single_file(
+    repo_id: int,
+    folder_id: int = Form(),  # Теперь обязательно
+    file: UploadFile = File(),
+    db: Session = Depends(get_db)
+):
+    # Проверяем репозиторий и папку
+    folder = db.query(Folder).filter(
+        Folder.id == folder_id,
+        Folder.repository_id == repo_id
+    ).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    
+    # Создаём новый файл
+    db_file = File(name=file.filename, folder_id=folder_id)
+    db.add(db_file)
+    db.commit()
+    db.refresh(db_file)
+    
+    # Сохраняем первую версию
+    file_dir = STORAGE_PATH / str(db_file.id)
+    file_dir.mkdir(parents=True, exist_ok=True)
+    version_path = file_dir / "v1.bin"
+    
+    with open(version_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    db_version = FileVersion(
+        file_id=db_file.id,
+        version_number=1,
+        file_path=str(version_path)
+    )
+    db.add(db_version)
+    db.commit()
+    
+    return {"message": "File uploaded"}

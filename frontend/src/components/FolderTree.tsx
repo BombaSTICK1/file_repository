@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
-import FileUploadForm from './FileUploadForm'; // ← новый импорт
+import FileUploadForm from './FileUploadForm';
+import FileVersionList from './FileVersionList';
 
 interface FolderNode {
   id: number;
@@ -9,9 +10,10 @@ interface FolderNode {
   files: { id: number; name: string; version_count: number }[];
 }
 
-export default function SimpleFolderTree() {
+export default function FolderTree() {
   const [treeData, setTreeData] = useState<FolderNode[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
 
   useEffect(() => {
     client.get<FolderNode[]>('/folders/tree').then(res => {
@@ -21,10 +23,16 @@ export default function SimpleFolderTree() {
 
   const handleFolderClick = (id: number) => {
     setSelectedFolderId(id);
+    setSelectedFileId(null); // Скрыть версии при выборе папки
+  };
+
+  const handleFileClick = (fileId: number) => {
+    setSelectedFileId(fileId);
+    setSelectedFolderId(null); // Скрыть форму загрузки при выборе файла
   };
 
   const handleUploadSuccess = () => {
-    // Перезагрузим дерево, чтобы обновить список файлов
+    // Перезагружаем дерево после загрузки файла
     client.get<FolderNode[]>('/folders/tree').then(res => {
       setTreeData(res.data);
     });
@@ -42,6 +50,7 @@ export default function SimpleFolderTree() {
             cursor: 'pointer',
             padding: '4px 0',
             backgroundColor: selectedFolderId === node.id ? '#e3f2fd' : 'transparent',
+            borderRadius: '4px',
           }}
         >
           <span>📁 </span>
@@ -50,7 +59,19 @@ export default function SimpleFolderTree() {
 
         {/* Файлы */}
         {node.files.map(file => (
-          <div key={file.id} style={{ marginLeft: '20px', display: 'flex', alignItems: 'center' }}>
+          <div
+            key={file.id}
+            onClick={() => handleFileClick(file.id)}
+            style={{
+              marginLeft: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              cursor: 'pointer',
+              padding: '2px 0',
+              backgroundColor: selectedFileId === file.id ? '#e8f5e9' : 'transparent',
+              borderRadius: '4px',
+            }}
+          >
             <span>📄 </span>
             <span>{file.name} (v{file.version_count})</span>
           </div>
@@ -69,5 +90,19 @@ export default function SimpleFolderTree() {
     ));
   };
 
-  return <div>{renderTree(treeData)}</div>;
+  return (
+    <div>
+      {renderTree(treeData)}
+
+      {/* Список версий (если файл выбран) */}
+      {selectedFileId && (
+        <div style={{ marginTop: '16px' }}>
+          <FileVersionList
+            fileId={selectedFileId}
+            onClose={() => setSelectedFileId(null)}
+          />
+        </div>
+      )}
+    </div>
+  );
 }
