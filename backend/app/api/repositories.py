@@ -247,63 +247,101 @@ def delete_repository(repo_id: int, db: Session = Depends(get_db)):
     return {"message": "Repository deleted"}
 
 
-@router.post("/{repo_id}/upload-file")
-async def upload_single_file(
+@router.post("/{repo_id}/upload-file-with-path")
+async def upload_file_with_path(
     repo_id: int,
     folder_id: int = Form(),
+    relative_path: str = Form(),  # Относительный путь внутри загружаемой папки
     file: UploadFile = File(),
     db: Session = Depends(get_db)
 ):
-    # Проверяем репозиторий и папку
-    folder = db.query(Folder).filter(
+    # Проверяем папку
+    base_folder = db.query(Folder).filter(
         Folder.id == folder_id,
         Folder.repository_id == repo_id
     ).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
+    if not base_folder:
+        raise HTTPException(status_code=404, detail="Base folder not found")
     
-    # Ищем существующий файл с таким именем в этой папке
+    # Разбиваем путь на компоненты
+    path_parts = [p for p in relative_path.split("/") if p]
+    if not path_parts:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    
+    # Создаём вложенные папки
+    current_parent_id = folder_id
+    current_base_path = base_folder.path or ""
+    
+    for i, part in enumerate(path_parts[:-1]):  # Все кроме последнего (файла)
+        # Формируем путь для текущей папки
+        if current_base_path:
+            folder_path = f"{current_base_path}/{part}"
+        else:
+            folder_path = part
+        
+        # Ищем существующую папку
+        existing_folder = db.query(Folder).filter(
+            Folder.repository_id == repo_id,
+            Folder.path == folder_path
+        ).first()
+        
+        if existing_folder:
+            current_parent_id = existing_folder.id
+        else:
+            # Создаём новую папку
+            new_folder = Folder(
+                name=part,
+                parent_id=current_parent_id,
+                repository_id=repo_id,
+                path=folder_path
+            )
+            db.add(new_folder)
+            db.flush()
+            db.refresh(new_folder)
+            current_parent_id = new_folder.id
+    
+    # Обрабатываем файл
+    file_name = path_parts[-1]
+    full_path = f"{current_base_path}/{relative_path}" if current_base_path else relative_path
+    
+    # Ищем существующий файл
     existing_file = db.query(File).filter(
-        File.name == file.filename,
-        File.folder_id == folder_id
+        File.name == file_name,
+        File.folder_id == current_parent_id
     ).first()
     
     if existing_file:
-        # Создаём новую версию существующего файла
+        # Новая версия
         last_version = db.query(FileVersion)\
             .filter(FileVersion.file_id == existing_file.id)\
             .order_by(FileVersion.version_number.desc())\
             .first()
-        new_version_number = (last_version.version_number + 1) if last_version else 1
+        new_version = (last_version.version_number + 1) if last_version else 1
         
-        # Сохраняем файл на диск
         file_dir = STORAGE_PATH / str(existing_file.id)
         file_dir.mkdir(parents=True, exist_ok=True)
-        version_path = file_dir / f"v{new_version_number}.bin"
+        version_path = file_dir / f"v{new_version}.bin"
         
         with open(version_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # Создаём запись версии
         db_version = FileVersion(
             file_id=existing_file.id,
-            version_number=new_version_number,
+            version_number=new_version,
             file_path=str(version_path)
         )
         db.add(db_version)
-        db.commit()
-        
-        return {"message": "New version created", "version": new_version_number}
-    
     else:
-        # Создаём новый файл
-        db_file = File(name=file.filename, folder_id=folder_id)
-        db.add(db_file)
-        db.commit()
-        db.refresh(db_file)
+        # Новый файл
+        new_file = File(
+            name=file_name,
+            folder_id=current_parent_id
+        )
+        db.add(new_file)
+        db.flush()
+        db.refresh(new_file)
         
-        # Сохраняем первую версию
-        file_dir = STORAGE_PATH / str(db_file.id)
+        file_dir = STORAGE_PATH / str(new_file.id)
         file_dir.mkdir(parents=True, exist_ok=True)
         version_path = file_dir / "v1.bin"
         
@@ -311,11 +349,11 @@ async def upload_single_file(
             shutil.copyfileobj(file.file, buffer)
         
         db_version = FileVersion(
-            file_id=db_file.id,
+            file_id=new_file.id,
             version_number=1,
             file_path=str(version_path)
         )
         db.add(db_version)
-        db.commit()
-        
-        return {"message": "New file created"}
+    
+    db.commit()
+    return {"message": "File processed"}

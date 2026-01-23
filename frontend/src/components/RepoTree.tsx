@@ -11,6 +11,7 @@ import client from '../api/client';
 import FileUploadButton from './FileUploadButton';
 import { DeleteRepoButton, DeleteItemButton } from './DeleteButtons';
 import FileVersionList from './FileVersionList';
+import FolderUploadButton from './FolderUploadButton';
 
 interface FolderNode {
   id: number;
@@ -72,6 +73,12 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
           </Typography>
           <DeleteItemButton type="folder" id={node.id} onDeleted={loadTree} />
         </Box>
+
+        {expandedFolders.has(node.id) && (
+          <Box sx={{ ml: 3, mb: 1 }}>
+            <FolderUploadButton repoId={repoId} folderId={node.id} onUploadComplete={loadTree} />
+          </Box>
+        )}
 
         {/* Содержимое папки (если раскрыта) */}
         {expandedFolders.has(node.id) && (

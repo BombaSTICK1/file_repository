@@ -15,6 +15,7 @@ class Folder(Base):
     name = Column(String, index=True)
     parent_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
     repository_id = Column(Integer, ForeignKey("repositories.id"))
+    path = Column(String, index=True)
     
     repository = relationship("Repository", back_populates="folders")
     children = relationship("Folder", back_populates="parent")
