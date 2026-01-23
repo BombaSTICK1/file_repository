@@ -250,7 +250,7 @@ def delete_repository(repo_id: int, db: Session = Depends(get_db)):
 @router.post("/{repo_id}/upload-file")
 async def upload_single_file(
     repo_id: int,
-    folder_id: int = Form(),  # Теперь обязательно
+    folder_id: int = Form(),
     file: UploadFile = File(),
     db: Session = Depends(get_db)
 ):
@@ -262,26 +262,60 @@ async def upload_single_file(
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
     
-    # Создаём новый файл
-    db_file = File(name=file.filename, folder_id=folder_id)
-    db.add(db_file)
-    db.commit()
-    db.refresh(db_file)
+    # Ищем существующий файл с таким именем в этой папке
+    existing_file = db.query(File).filter(
+        File.name == file.filename,
+        File.folder_id == folder_id
+    ).first()
     
-    # Сохраняем первую версию
-    file_dir = STORAGE_PATH / str(db_file.id)
-    file_dir.mkdir(parents=True, exist_ok=True)
-    version_path = file_dir / "v1.bin"
+    if existing_file:
+        # Создаём новую версию существующего файла
+        last_version = db.query(FileVersion)\
+            .filter(FileVersion.file_id == existing_file.id)\
+            .order_by(FileVersion.version_number.desc())\
+            .first()
+        new_version_number = (last_version.version_number + 1) if last_version else 1
+        
+        # Сохраняем файл на диск
+        file_dir = STORAGE_PATH / str(existing_file.id)
+        file_dir.mkdir(parents=True, exist_ok=True)
+        version_path = file_dir / f"v{new_version_number}.bin"
+        
+        with open(version_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Создаём запись версии
+        db_version = FileVersion(
+            file_id=existing_file.id,
+            version_number=new_version_number,
+            file_path=str(version_path)
+        )
+        db.add(db_version)
+        db.commit()
+        
+        return {"message": "New version created", "version": new_version_number}
     
-    with open(version_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
-    db_version = FileVersion(
-        file_id=db_file.id,
-        version_number=1,
-        file_path=str(version_path)
-    )
-    db.add(db_version)
-    db.commit()
-    
-    return {"message": "File uploaded"}
+    else:
+        # Создаём новый файл
+        db_file = File(name=file.filename, folder_id=folder_id)
+        db.add(db_file)
+        db.commit()
+        db.refresh(db_file)
+        
+        # Сохраняем первую версию
+        file_dir = STORAGE_PATH / str(db_file.id)
+        file_dir.mkdir(parents=True, exist_ok=True)
+        version_path = file_dir / "v1.bin"
+        
+        with open(version_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        db_version = FileVersion(
+            file_id=db_file.id,
+            version_number=1,
+            file_path=str(version_path)
+        )
+        db.add(db_version)
+        db.commit()
+        
+        return {"message": "New file created"}
