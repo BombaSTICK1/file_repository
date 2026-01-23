@@ -6,7 +6,6 @@ import {
   ListItemText, 
   Button,
   Paper,
-  Typography,
   Box
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
@@ -87,6 +86,7 @@ export default function RepoList() {
           ))}
         </List>
       </Paper>
+      
 
       {/* Дерево выбранного репозитория */}
       {selectedRepoId && (

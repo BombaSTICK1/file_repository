@@ -9,9 +9,10 @@ import FolderIcon from '@mui/icons-material/Folder';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import client from '../api/client';
 import FileUploadButton from './FileUploadButton';
+import FolderUploadButton from './FolderUploadButton';
+import CreateFolderButton from './CreateFolderButton';
 import { DeleteRepoButton, DeleteItemButton } from './DeleteButtons';
 import FileVersionList from './FileVersionList';
-import FolderUploadButton from './FolderUploadButton';
 
 interface FolderNode {
   id: number;
@@ -74,20 +75,24 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
           <DeleteItemButton type="folder" id={node.id} onDeleted={loadTree} />
         </Box>
 
-        {expandedFolders.has(node.id) && (
-          <Box sx={{ ml: 3, mb: 1 }}>
-            <FolderUploadButton repoId={repoId} folderId={node.id} onUploadComplete={loadTree} />
-          </Box>
-        )}
-
         {/* Содержимое папки (если раскрыта) */}
         {expandedFolders.has(node.id) && (
           <Box sx={{ ml: 3, mb: 1 }}>
-            {/* Кнопка загрузки в папку */}
+            {/* Кнопки действий */}
             <FileUploadButton 
               repoId={repoId} 
               folderId={node.id}
               onUploadComplete={loadTree} 
+            />
+            <FolderUploadButton 
+              repoId={repoId} 
+              folderId={node.id}
+              onUploadComplete={loadTree} 
+            />
+            <CreateFolderButton 
+              repoId={repoId} 
+              parentId={node.id}
+              onCreateComplete={loadTree} 
             />
             
             {/* Файлы */}
@@ -122,7 +127,29 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
     <Paper sx={{ p: 2, border: '1px solid #e1e4e8' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h6">Содержимое репозитория</Typography>
-        <DeleteRepoButton repoId={repoId} onDeleted={onRepoDeleted} />
+        <Box>
+          {/* Кнопки загрузки в корень (если есть корневая папка) */}
+          {treeData.length > 0 && (
+            <>
+              <FileUploadButton 
+                repoId={repoId} 
+                folderId={treeData[0].id}
+                onUploadComplete={loadTree} 
+              />
+              <FolderUploadButton 
+                repoId={repoId} 
+                folderId={treeData[0].id}
+                onUploadComplete={loadTree} 
+              />
+              <CreateFolderButton 
+                repoId={repoId} 
+                parentId={treeData[0].id}
+                onCreateComplete={loadTree} 
+              />
+            </>
+          )}
+          <DeleteRepoButton repoId={repoId} onDeleted={onRepoDeleted} />
+        </Box>
       </Box>
 
       <Box sx={{ mt: 2 }}>

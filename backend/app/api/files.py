@@ -154,7 +154,7 @@ def get_file_versions(file_id: int, db: Session = Depends(get_db)):
         }
         for v in versions
     ]
-# backend/app/api/files.py
+
 @router.delete("/{file_id}")
 def delete_file(file_id: int, db: Session = Depends(get_db)):
     file = db.query(File).filter(File.id == file_id).first()
@@ -168,6 +168,11 @@ def delete_file(file_id: int, db: Session = Depends(get_db)):
             os.remove(ver.file_path)
         db.delete(ver)
     
+    # Удаляем папку файла
+    file_dir = STORAGE_PATH / str(file_id)
+    if file_dir.exists():
+        shutil.rmtree(file_dir)  # ← УДАЛЯЕТ ВСЮ ПАПКУ
+    
     db.delete(file)
     db.commit()
-    return {"message": "File deleted"}
+    return {"message": "File and storage deleted"}

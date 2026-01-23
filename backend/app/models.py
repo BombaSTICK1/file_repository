@@ -27,6 +27,7 @@ class File(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     folder_id = Column(Integer, ForeignKey("folders.id"))
+    repository_id = Column(Integer, ForeignKey("repositories.id"))
     
     folder = relationship("Folder", back_populates="files")
     versions = relationship("FileVersion", back_populates="file", order_by="FileVersion.version_number")

@@ -8,7 +8,7 @@ import shutil
 import zipfile
 from pathlib import Path
 import os
-
+from .folders import delete_recursive
 
 router = APIRouter()
 
@@ -51,6 +51,17 @@ def create_repository(repo: RepositoryCreate, db: Session = Depends(get_db)):
     db.add(db_repo)
     db.commit()
     db.refresh(db_repo)
+    
+    # Создаём корневую папку
+    root_folder = Folder(
+        name=repo.name,
+        repository_id=db_repo.id,
+        path=""  # ← пустой путь для корня
+    )
+    db.add(root_folder)
+    db.commit()
+    db.refresh(root_folder)
+    
     return db_repo
 
 # 2. Получить список репозиториев
@@ -232,20 +243,97 @@ async def upload_repo_zip(
         if extract_path.exists():
             shutil.rmtree(extract_path)
 
-# backend/app/api/repositories.py
 @router.delete("/{repo_id}")
 def delete_repository(repo_id: int, db: Session = Depends(get_db)):
     repo = db.query(Repository).filter(Repository.id == repo_id).first()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
     
-    # Удаляем связанные файлы и папки (каскадное удаление)
-    db.query(Folder).filter(Folder.repository_id == repo_id).delete()
-    db.query(File).filter(File.repository_id == repo_id).delete()
+    # Получаем все папки репозитория
+    folders = db.query(Folder).filter(Folder.repository_id == repo_id).all()
+    for folder in folders:
+        delete_recursive(folder.id, db)  # ← Используем ту же функцию
+    
     db.delete(repo)
     db.commit()
     return {"message": "Repository deleted"}
 
+@router.post("/{repo_id}/upload-file")
+async def upload_single_file(
+    repo_id: int,
+    folder_id: int = Form(),
+    file: UploadFile = File(),
+    db: Session = Depends(get_db)
+):
+    # Проверяем существование репозитория и папки
+    folder = db.query(Folder).filter(
+        Folder.id == folder_id,
+        Folder.repository_id == repo_id
+    ).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    
+    # Ищем существующий файл с таким именем в этой папке
+    existing_file = db.query(File).filter(
+        File.name == file.filename,
+        File.folder_id == folder_id
+    ).first()
+    
+    if existing_file:
+        # Создаём новую версию существующего файла
+        last_version = db.query(FileVersion)\
+            .filter(FileVersion.file_id == existing_file.id)\
+            .order_by(FileVersion.version_number.desc())\
+            .first()
+        new_version_number = (last_version.version_number + 1) if last_version else 1
+        
+        # Сохраняем файл на диск
+        file_dir = STORAGE_PATH / str(existing_file.id)
+        file_dir.mkdir(parents=True, exist_ok=True)
+        version_path = file_dir / f"v{new_version_number}.bin"
+        
+        with open(version_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Создаём запись версии
+        db_version = FileVersion(
+            file_id=existing_file.id,
+            version_number=new_version_number,
+            file_path=str(version_path)
+        )
+        db.add(db_version)
+        db.commit()
+        
+        return {"message": "New version created", "version": new_version_number}
+    
+    else:
+        # Создаём новый файл
+        db_file = File(
+            name=file.filename,
+            folder_id=folder_id,
+            repository_id=repo_id  # ← КЛЮЧЕВОЕ ДОБАВЛЕНИЕ
+        )
+        db.add(db_file)
+        db.commit()
+        db.refresh(db_file)
+        
+        # Сохраняем первую версию
+        file_dir = STORAGE_PATH / str(db_file.id)
+        file_dir.mkdir(parents=True, exist_ok=True)
+        version_path = file_dir / "v1.bin"
+        
+        with open(version_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        db_version = FileVersion(
+            file_id=db_file.id,
+            version_number=1,
+            file_path=str(version_path)
+        )
+        db.add(db_version)
+        db.commit()
+        
+        return {"message": "New file created"}
 
 @router.post("/{repo_id}/upload-file-with-path")
 async def upload_file_with_path(
@@ -335,7 +423,8 @@ async def upload_file_with_path(
         # Новый файл
         new_file = File(
             name=file_name,
-            folder_id=current_parent_id
+            folder_id=current_parent_id,
+            repository_id=repo_id
         )
         db.add(new_file)
         db.flush()

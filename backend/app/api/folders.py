@@ -4,6 +4,7 @@ from app.database import get_db
 from app.models import Folder, FileVersion, File
 from pydantic import BaseModel
 import os
+import shutil
 
 router = APIRouter()
 
@@ -82,3 +83,32 @@ def delete_folder(folder_id: int, db: Session = Depends(get_db)):
     delete_recursive(folder_id)
     db.commit()
     return {"message": "Folder deleted"}
+
+def delete_recursive(folder_id: int, db: Session):
+    """
+    Рекурсивно удаляет папку и всё её содержимое
+    """
+    # Удаляем вложенные папки
+    children = db.query(Folder).filter(Folder.parent_id == folder_id).all()
+    for child in children:
+        delete_recursive(child.id, db)
+    
+    # Удаляем файлы в папке
+    files = db.query(File).filter(File.folder_id == folder_id).all()
+    for file in files:
+        # Удаляем версии с диска
+        versions = db.query(FileVersion).filter(FileVersion.file_id == file.id).all()
+        for ver in versions:
+            if os.path.exists(ver.file_path):
+                os.remove(ver.file_path)
+            db.delete(ver)
+        
+        # Удаляем папку файла
+        file_dir = STORAGE_PATH / str(file.id)
+        if file_dir.exists():
+            shutil.rmtree(file_dir)
+        
+        db.delete(file)
+    
+    # Удаляем саму папку
+    db.query(Folder).filter(Folder.id == folder_id).delete()
