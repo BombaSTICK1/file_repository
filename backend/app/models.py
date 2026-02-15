@@ -1,13 +1,24 @@
 # backend/app/models.py
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from .database import Base
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    repositories = relationship("Repository", back_populates="owner")
 
 class Repository(Base):
     __tablename__ = "repositories"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    folders = relationship("Folder", back_populates="repository")
+    owner_id = Column(Integer, ForeignKey("users.id"))
+    
+    # ДОБАВЬ ЭТО:
+    owner = relationship("User", back_populates="repositories")
+    folders = relationship("Folder", back_populates="repository")  # ← КЛЮЧЕВАЯ СТРОКА
 
 class Folder(Base):
     __tablename__ = "folders"
@@ -15,7 +26,7 @@ class Folder(Base):
     name = Column(String, index=True)
     parent_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
     repository_id = Column(Integer, ForeignKey("repositories.id"))
-    path = Column(String, index=True)
+    path = Column(String, index=True)  # ← ДОБАВЬ ЭТУ СТРОКУ
     
     repository = relationship("Repository", back_populates="folders")
     children = relationship("Folder", back_populates="parent")
@@ -38,5 +49,5 @@ class FileVersion(Base):
     file_id = Column(Integer, ForeignKey("files.id"))
     version_number = Column(Integer, index=True)
     file_path = Column(String)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
     file = relationship("File", back_populates="versions")

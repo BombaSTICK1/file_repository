@@ -2,13 +2,14 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Repository, Folder, File, FileVersion
+from app.models import Repository, Folder, File, FileVersion, User
 from pydantic import BaseModel
 import shutil
 import zipfile
 from pathlib import Path
 import os
 from .folders import delete_recursive
+from .deps import get_current_user
 
 router = APIRouter()
 
@@ -46,17 +47,21 @@ def folder_to_dict(folder):
 
 # 1. Создать репозиторий
 @router.post("/", response_model=RepositoryOut)
-def create_repository(repo: RepositoryCreate, db: Session = Depends(get_db)):
-    db_repo = Repository(name=repo.name)
+def create_repository(
+    repo: RepositoryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    db_repo = Repository(name=repo.name, owner_id=current_user.id)
     db.add(db_repo)
     db.commit()
     db.refresh(db_repo)
-    
+   
     # Создаём корневую папку
     root_folder = Folder(
         name=repo.name,
         repository_id=db_repo.id,
-        path=""  # ← пустой путь для корня
+        
     )
     db.add(root_folder)
     db.commit()

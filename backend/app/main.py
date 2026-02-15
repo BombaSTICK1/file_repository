@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.database import engine, Base
-from app.api import folders, files, repositories
+from app.api import folders, files, repositories, auth
 from fastapi.middleware.cors import CORSMiddleware
 
 # Создаём таблицы (только если их нет)
@@ -18,6 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(repositories.router, prefix="/api/repos", tags=["repos"])
 app.include_router(folders.router, prefix="/api/folders", tags=["folders"])
 app.include_router(files.router, prefix="/api/files", tags=["files"])

@@ -1,5 +1,8 @@
+// frontend/src/App.tsx
+import { useState, useEffect } from 'react';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import RepoList from './components/RepoList';
+import AuthForm from './components/AuthForm'; // ← ДОБАВЬ ЭТОТ ИМПОРТ
 
 const theme = createTheme({
   palette: {
@@ -14,6 +17,27 @@ const theme = createTheme({
 });
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    // Проверяем наличие токена при загрузке
+    const token = localStorage.getItem('token');
+    if (token) {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  if (!isAuthenticated) {
+    // Показываем форму авторизации
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <AuthForm />
+      </ThemeProvider>
+    );
+  }
+
+  // Показываем основной интерфейс
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />

@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import client from '../api/client';
 
+
 interface CreateRepoFormProps {
   onRepoCreated: () => void;
   onCancel: () => void;
@@ -59,3 +60,4 @@ export default function CreateRepoForm({ onRepoCreated, onCancel }: CreateRepoFo
     </Paper>
   );
 }
+console.log('Token:', localStorage.getItem('token'));
