@@ -13,6 +13,7 @@ import FolderUploadButton from './FolderUploadButton';
 import CreateFolderButton from './CreateFolderButton';
 import { DeleteRepoButton, DeleteItemButton } from './DeleteButtons';
 import FileVersionList from './FileVersionList';
+import FileViewer from './FileViewer';
 
 interface FolderNode {
   id: number;
@@ -26,10 +27,16 @@ interface RepoTreeProps {
   onRepoDeleted: () => void;
 }
 
+interface SelectedFile {
+  id: number;
+  name: string;
+  version: number;
+}
+
 export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
   const [treeData, setTreeData] = useState<FolderNode[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set());
-  const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
+  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
 
   useEffect(() => {
     loadTree();
@@ -104,9 +111,10 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
                   alignItems: 'center', 
                   py: 0.5,
                   '&:hover': { backgroundColor: '#f6f8fa', borderRadius: '4px' },
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  pl: 2
                 }}
-                onClick={() => setSelectedFileId(file.id)}
+                onClick={() => setSelectedFile({ id: file.id, name: file.name, version: file.version_count })}
               >
                 <InsertDriveFileIcon sx={{ mr: 1, fontSize: 16 }} />
                 <Typography variant="body2" sx={{ flexGrow: 1 }}>
@@ -156,14 +164,13 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
         {treeData.length > 0 ? renderTree(treeData) : 'Репозиторий пуст'}
       </Box>
 
-      {/* Список версий файла */}
-      {selectedFileId && (
-        <Box sx={{ mt: 3 }}>
-          <FileVersionList 
-            fileId={selectedFileId} 
-            onClose={() => setSelectedFileId(null)} 
-          />
-        </Box>
+      {/* Просмотр содержимого файла */}
+      {selectedFile && (
+        <FileViewer 
+          fileId={selectedFile.id}
+          fileName={selectedFile.name}
+          onClose={() => setSelectedFile(null)}
+        />
       )}
     </Paper>
   );

@@ -60,4 +60,3 @@ export default function CreateRepoForm({ onRepoCreated, onCancel }: CreateRepoFo
     </Paper>
   );
 }
-console.log('Token:', localStorage.getItem('token'));

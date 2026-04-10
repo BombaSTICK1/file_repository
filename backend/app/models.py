@@ -37,6 +37,7 @@ class File(Base):
     __tablename__ = "files"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
+    path = Column(String, nullable=True)  # ← для относительного пути в архивах
     folder_id = Column(Integer, ForeignKey("folders.id"))
     repository_id = Column(Integer, ForeignKey("repositories.id"))
     
@@ -49,5 +50,6 @@ class FileVersion(Base):
     file_id = Column(Integer, ForeignKey("files.id"))
     version_number = Column(Integer, index=True)
     file_path = Column(String)
+    commit_message = Column(String, nullable=True)  # Сообщение при обновлении
     
     file = relationship("File", back_populates="versions")

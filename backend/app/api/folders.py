@@ -5,12 +5,18 @@ from app.models import Folder, FileVersion, File
 from pydantic import BaseModel
 import os
 import shutil
+from pathlib import Path
 
 router = APIRouter()
+
+# Путь к хранилищу файлов
+STORAGE_PATH = Path("storage")
+STORAGE_PATH.mkdir(exist_ok=True)
 
 class FolderCreate(BaseModel):
     name: str
     parent_id: int | None = None
+    repository_id: int  # ← обязательно!
 
 class FolderResponse(BaseModel):
     id: int
@@ -20,11 +26,6 @@ class FolderResponse(BaseModel):
     class Config:
         from_attributes = True  # Pydantic v2 (ранее orm_mode = True)
 
-class FolderCreate(BaseModel):
-    name: str
-    parent_id: int | None = None
-    repository_id: int  # ← обязательно!
-
 @router.post("/", response_model=FolderResponse)
 def create_folder(folder: FolderCreate, db: Session = Depends(get_db)):
     db_folder = Folder(
@@ -32,14 +33,6 @@ def create_folder(folder: FolderCreate, db: Session = Depends(get_db)):
         parent_id=folder.parent_id,
         repository_id=folder.repository_id
     )
-    db.add(db_folder)
-    db.commit()
-    db.refresh(db_folder)
-    return db_folder
-
-@router.post("/", response_model=FolderResponse)
-def create_folder(folder: FolderCreate, db: Session = Depends(get_db)):
-    db_folder = Folder(name=folder.name, parent_id=folder.parent_id)
     db.add(db_folder)
     db.commit()
     db.refresh(db_folder)
@@ -60,27 +53,7 @@ def delete_folder(folder_id: int, db: Session = Depends(get_db)):
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
     
-    # Удаляем вложенные папки и файлы рекурсивно
-    def delete_recursive(f_id):
-        # Удаляем вложенные папки
-        children = db.query(Folder).filter(Folder.parent_id == f_id).all()
-        for child in children:
-            delete_recursive(child.id)
-        
-        # Удаляем файлы в папке
-        files = db.query(File).filter(File.folder_id == f_id).all()
-        for file in files:
-            # Удаляем файлы с диска
-            versions = db.query(FileVersion).filter(FileVersion.file_id == file.id).all()
-            for ver in versions:
-                if os.path.exists(ver.file_path):
-                    os.remove(ver.file_path)
-            db.query(FileVersion).filter(FileVersion.file_id == file.id).delete()
-        
-        db.query(File).filter(File.folder_id == f_id).delete()
-        db.query(Folder).filter(Folder.id == f_id).delete()
-    
-    delete_recursive(folder_id)
+    delete_recursive(folder_id, db)
     db.commit()
     return {"message": "Folder deleted"}
 

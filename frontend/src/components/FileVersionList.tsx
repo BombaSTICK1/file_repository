@@ -5,7 +5,7 @@ import client from '../api/client';
 interface FileVersion {
   id: number;
   version_number: number;
-  created_at: string;
+  created_at?: string;
 }
 
 interface FileVersionListProps {
@@ -23,7 +23,8 @@ export default function FileVersionList({ fileId, onClose }: FileVersionListProp
   }, [fileId]);
 
   const handleDownload = (versionNumber: number) => {
-    window.open(`http://127.0.0.1:8000/api/files/${fileId}/versions/${versionNumber}`, '_blank');
+    const baseURL = client.defaults.baseURL || 'http://127.0.0.1:8000/api';
+    window.open(`${baseURL}/files/${fileId}/versions/${versionNumber}`, '_blank');
   };
 
   return (
@@ -40,7 +41,7 @@ export default function FileVersionList({ fileId, onClose }: FileVersionListProp
       <div style={{ clear: 'both' }}>
         {versions.map(v => (
           <div key={v.id} style={{ marginBottom: '4px' }}>
-            <span>v{v.version_number} ({new Date(v.created_at).toLocaleString()})</span>
+            <span>v{v.version_number} {v.created_at && `(${new Date(v.created_at).toLocaleString()})`}</span>
             <button
               onClick={() => handleDownload(v.version_number)}
               style={{ marginLeft: '8px' }}

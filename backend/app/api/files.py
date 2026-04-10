@@ -8,6 +8,7 @@ from app.models import File, FileVersion, Folder
 from pydantic import BaseModel
 from pathlib import Path
 from fastapi.responses import FileResponse
+import difflib
 
 router = APIRouter()
 
@@ -72,6 +73,7 @@ async def upload_file(
 async def upload_new_version(
     file_id: int,
     file: UploadFile = File(),
+    commit_message: str = Form(default=""),
     db: Session = Depends(get_db)
 ):
     # Находим существующий файл
@@ -95,11 +97,12 @@ async def upload_new_version(
     with open(version_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Создаём запись версии
+    # Создаём запись версии с коммит-сообщением
     db_version = FileVersion(
         file_id=file_id,
         version_number=new_version_number,
-        file_path=str(version_path)
+        file_path=str(version_path),
+        commit_message=commit_message if commit_message else None
     )
     db.add(db_version)
     db.commit()
@@ -127,6 +130,39 @@ def get_files(db: Session = Depends(get_db)):
         })
     return result
 
+@router.get("/{file_id}/versions/{version_number}/content")
+def get_file_content(file_id: int, version_number: int, db: Session = Depends(get_db)):
+    """
+    Получить содержимое файла определённой версии
+    """
+    version = db.query(FileVersion)\
+                .filter(FileVersion.file_id == file_id, FileVersion.version_number == version_number)\
+                .first()
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    file_path = version.file_path
+    # Если путь относительный, преобразуем его в абсолютный
+    if not os.path.isabs(file_path):
+        file_path = os.path.join(os.getcwd(), file_path)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found on disk: {file_path}")
+
+    try:
+        # Читаем файл как бинарный и декодируем
+        with open(file_path, 'rb') as f:
+            content_bytes = f.read()
+        
+        # Пытаемся декодировать как UTF-8
+        content = content_bytes.decode('utf-8')
+        return {"content": content, "file_id": file_id, "version_number": version_number}
+    except UnicodeDecodeError:
+        # Если файл не текстовый, возвращаем сообщение об ошибке
+        return {"content": "[Файл не является текстовым файлом]", "file_id": file_id, "version_number": version_number, "is_binary": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
+
 @router.get("/{file_id}/versions/{version_number}")
 def download_file_version(file_id: int, version_number: int, db: Session = Depends(get_db)):
     version = db.query(FileVersion)\
@@ -144,16 +180,63 @@ def download_file_version(file_id: int, version_number: int, db: Session = Depen
 def get_file_versions(file_id: int, db: Session = Depends(get_db)):
     versions = db.query(FileVersion)\
                  .filter(FileVersion.file_id == file_id)\
-                 .order_by(FileVersion.version_number)\
+                 .order_by(FileVersion.version_number.desc())\
                  .all()
     return [
         {
             "id": v.id,
             "version_number": v.version_number,
-            "created_at": v.created_at.isoformat() if v.created_at else None
+            "commit_message": v.commit_message or f"Version {v.version_number}",
+            "file_path": v.file_path
         }
         for v in versions
     ]
+
+@router.get("/{file_id}/versions/{v1}/compare/{v2}")
+def compare_versions(file_id: int, v1: int, v2: int, db: Session = Depends(get_db)):
+    """
+    Сравнить две версии файла
+    v1 - старая версия, v2 - новая версия
+    """
+    version1 = db.query(FileVersion)\
+                 .filter(FileVersion.file_id == file_id, FileVersion.version_number == v1)\
+                 .first()
+    version2 = db.query(FileVersion)\
+                 .filter(FileVersion.file_id == file_id, FileVersion.version_number == v2)\
+                 .first()
+    
+    if not version1 or not version2:
+        raise HTTPException(status_code=404, detail="Version not found")
+    
+    # Читаем обе версии
+    def read_file(file_path):
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(os.getcwd(), file_path)
+        
+        try:
+            with open(file_path, 'rb') as f:
+                return f.read().decode('utf-8').splitlines(keepends=True)
+        except (UnicodeDecodeError, FileNotFoundError):
+            return ["[Не удаётся прочитать файл]\n"]
+    
+    content1 = read_file(version1.file_path)
+    content2 = read_file(version2.file_path)
+    
+    # Создаём diff
+    diff = list(difflib.unified_diff(
+        content1, 
+        content2,
+        fromfile=f"v{v1}",
+        tofile=f"v{v2}",
+        lineterm=""
+    ))
+    
+    return {
+        "file_id": file_id,
+        "version_from": v1,
+        "version_to": v2,
+        "diff": diff
+    }
 
 @router.delete("/{file_id}")
 def delete_file(file_id: int, db: Session = Depends(get_db)):
