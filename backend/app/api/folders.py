@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Folder, FileVersion, File
+from app.models import Folder, FileVersion, File, Repository, User
 from pydantic import BaseModel
 import os
 import shutil
 from pathlib import Path
+from .deps import get_current_user
 
 router = APIRouter()
 
@@ -27,7 +28,12 @@ class FolderResponse(BaseModel):
         from_attributes = True  # Pydantic v2 (ранее orm_mode = True)
 
 @router.post("/", response_model=FolderResponse)
-def create_folder(folder: FolderCreate, db: Session = Depends(get_db)):
+def create_folder(folder: FolderCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Проверяем права доступа к репозиторию
+    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
+    if not repo:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     db_folder = Folder(
         name=folder.name,
         parent_id=folder.parent_id,
@@ -39,19 +45,31 @@ def create_folder(folder: FolderCreate, db: Session = Depends(get_db)):
     return db_folder
 
 @router.get("/", response_model=list[FolderResponse])
-def get_folders(db: Session = Depends(get_db)):
-    return db.query(Folder).all()
+def get_folders(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Folder)\
+             .join(Repository)\
+             .filter(Repository.owner_id == current_user.id)\
+             .all()
 
 @router.get("/tree")
-def get_folder_tree(db: Session = Depends(get_db)):
-    root_folders = db.query(Folder).filter(Folder.parent_id.is_(None)).all()
+def get_folder_tree(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    root_folders = db.query(Folder)\
+                     .join(Repository)\
+                     .filter(Folder.parent_id.is_(None), Repository.owner_id == current_user.id)\
+                     .all()
     return [folder.to_dict() for folder in root_folders]
 
 @router.delete("/{folder_id}")
-def delete_folder(folder_id: int, db: Session = Depends(get_db)):
+def delete_folder(folder_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Находим папку и проверяем права доступа
     folder = db.query(Folder).filter(Folder.id == folder_id).first()
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
+    
+    # Проверяем права доступа к репозиторию
+    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
+    if not repo:
+        raise HTTPException(status_code=403, detail="Access denied")
     
     delete_recursive(folder_id, db)
     db.commit()

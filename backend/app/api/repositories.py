@@ -71,16 +71,16 @@ def create_repository(
 
 # 2. Получить список репозиториев
 @router.get("/", response_model=list[RepositoryOut])
-def get_repositories(db: Session = Depends(get_db)):
-    return db.query(Repository).all()
+def get_repositories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Repository).filter(Repository.owner_id == current_user.id).all()
 
 # 3. Получить дерево репозитория
 @router.get("/{repo_id}/tree")
-def get_repository_tree(repo_id: int, db: Session = Depends(get_db)):
-    # Проверяем существование репозитория
-    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+def get_repository_tree(repo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Проверяем существование репозитория и права доступа
+    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
     if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found")
+        raise HTTPException(status_code=404, detail="Repository not found or access denied")
     
     # Получаем корневые папки репозитория
     root_folders = db.query(Folder)\
@@ -94,12 +94,13 @@ def get_repository_tree(repo_id: int, db: Session = Depends(get_db)):
 async def upload_repo_zip(
     repo_id: int,
     file: UploadFile = File(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    # Проверяем существование репозитория
-    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+    # Проверяем существование репозитория и права доступа
+    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
     if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found")
+        raise HTTPException(status_code=404, detail="Repository not found or access denied")
     
     # Проверяем расширение файла
     if not file.filename.endswith('.zip'):
@@ -249,10 +250,10 @@ async def upload_repo_zip(
             shutil.rmtree(extract_path)
 
 @router.delete("/{repo_id}")
-def delete_repository(repo_id: int, db: Session = Depends(get_db)):
-    repo = db.query(Repository).filter(Repository.id == repo_id).first()
+def delete_repository(repo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
     if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found")
+        raise HTTPException(status_code=404, detail="Repository not found or access denied")
     
     # Получаем все папки репозитория
     folders = db.query(Folder).filter(Folder.repository_id == repo_id).all()
@@ -268,9 +269,15 @@ async def upload_single_file(
     repo_id: int,
     folder_id: int = Form(),
     file: UploadFile = File(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    # Проверяем существование репозитория и папки
+    # Проверяем существование репозитория и права доступа
+    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found or access denied")
+    
+    # Проверяем существование папки
     folder = db.query(Folder).filter(
         Folder.id == folder_id,
         Folder.repository_id == repo_id
@@ -346,8 +353,14 @@ async def upload_file_with_path(
     folder_id: int = Form(),
     relative_path: str = Form(),  # Относительный путь внутри загружаемой папки
     file: UploadFile = File(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    # Проверяем существование репозитория и права доступа
+    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found or access denied")
+    
     # Проверяем папку
     base_folder = db.query(Folder).filter(
         Folder.id == folder_id,
