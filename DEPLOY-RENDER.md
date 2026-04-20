@@ -27,93 +27,80 @@
 
 ---
 
-## 🚀 Шаг 2: Деплой на Render
+## 🚀 Шаг 2: Деплой на Render (ручное создание)
 
-### Вариант A: Через render.yaml (рекомендуется)
+### 1. Backend
 
-1. **Запуш код в Git**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin <твой-repo-url>
-   git push -u origin main
-   ```
+1. **Зайди на [dashboard.render.com](https://dashboard.render.com)**
+2. Click **"New +"** → **"Web Service"**
+3. Подключи свой Git-репозиторий
+4. **Заполни настройки:**
 
-2. **Подключи репозиторий к Render**
-   - Зайди на [dashboard.render.com](https://dashboard.render.com)
-   - Click "New +" → "Blueprint"
-   - Подключи свой Git-репозиторий
-   - Render автоматически распознает `render.yaml`
+| Поле | Значение |
+|------|----------|
+| Name | `file-repo-backend` |
+| Region | `Frankfurt, Germany` |
+| Branch | `main` |
+| Root Directory | `backend/app` |
+| Runtime | `Python 3.11` |
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `uvicorn main:app --host 0.0.0.0 --port $PORT` |
+| Instance Type | **Free** |
 
-3. **Настрой переменные окружения**
+5. **Environment Variables** (добавь каждую):
 
-   **Для backend:**
-   - `DATABASE_URL` — вставь connection string от Neon
-   - `SECRET_KEY` — сгенерируй случайную строку (например, через `openssl rand -hex 32`)
-   - `ENVIRONMENT` = `production`
-   - `FRONTEND_URL` — пока оставь пустым, заполнишь после деплоя frontend
+```
+DATABASE_URL=<твой-postgresql-url-от-neon>
+SECRET_KEY=<случайная-строка-32+символа>
+ENVIRONMENT=production
+FRONTEND_URL=<заполнишь-после-деплоя-frontend>
+```
 
-   **Для frontend:**
-   - `VITE_API_URL` = `https://<твой-backend>.onrender.com/api`
-
-4. **Запусти деплой**
-   - Click "Apply"
-   - Render создаст 2 сервиса и начнёт деплой
-   - Backend: ~3-5 минут
-   - Frontend: ~2-3 минуты
+6. Click **"Create Web Service"**
+7. Жди ~3-5 минут пока сервис задеплоится
 
 ---
 
-### Вариант B: Ручное создание сервисов
+### 2. Frontend
 
-Если `render.yaml` не сработал:
+1. **Вернись в Dashboard Render**
+2. Click **"New +"** → **"Static Site"**
+3. Подключи тот же Git-репозиторий
+4. **Заполни настройки:**
 
-#### 1. Backend
+| Поле | Значение |
+|------|----------|
+| Name | `file-repo-frontend` |
+| Branch | `main` |
+| Root Directory | `frontend` |
+| Build Command | `npm install && npm run build` |
+| Publish Directory | `dist` |
 
-- **New +** → **Web Service**
-- Подключи репозиторий
-- **Настройки:**
-  - Name: `file-repo-backend`
-  - Region: `Frankfurt, Germany`
-  - Branch: `main`
-  - Root Directory: `backend/app`
-  - Runtime: `Python 3`
-  - Build Command: `pip install -r requirements.txt`
-  - Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-  - Instance Type: **Free**
+5. **Environment Variables:**
 
-- **Environment Variables:**
-  ```
-  DATABASE_URL=<твой-postgresql-url-от-neon>
-  SECRET_KEY=<случайная-строка-32+символа>
-  ENVIRONMENT=production
-  FRONTEND_URL=<url-frontend-после-деплоя>
-  ```
+```
+VITE_API_URL=https://<твой-backend>.onrender.com/api
+```
 
-- **Disk (опционально, для хранения файлов):**
-  - Name: `storage`
-  - Mount Path: `/opt/render/project/src/backend/storage`
-  - Size: `1 GB`
+⚠️ **Важно:** замени `<твой-backend>` на URL из первого шага (например: `https://file-repo-backend-xyz.onrender.com`)
 
-#### 2. Frontend
+6. Click **"Create Static Site"**
+7. Жди ~2-3 минуты
 
-- **New +** → **Static Site**
-- Подключи репозиторий
-- **Настройки:**
-  - Name: `file-repo-frontend`
-  - Region: `Frankfurt, Germany`
-  - Branch: `main`
-  - Root Directory: `frontend`
-  - Build Command: `npm install && npm run build`
-  - Publish Directory: `dist`
-  - Instance Type: **Free**
+---
 
-- **Environment Variables:**
-  ```
-  VITE_API_URL=https://<твой-backend>.onrender.com/api
-  ```
+### 3. Обновление CORS (обязательно!)
+
+После деплоя frontend нужно обновить backend:
+
+1. В Render открой **backend** сервис
+2. Перейди во вкладку **"Environment"**
+3. Измени переменную:
+   ```
+   FRONTEND_URL=https://<твой-frontend>.onrender.com
+   ```
+4. Click **"Save Changes"**
+5. Render автоматически перезапустит сервис
 
 ---
 
@@ -133,16 +120,41 @@
 
 ---
 
-## 🔧 Шаг 4: Обновление CORS (если нужно)
+## 🔧 Шаг 4: Если что-то не работает
 
-Если frontend не может подключиться к backend:
+### Backend не запускается
+```
+1. Открой Render Dashboard → backend сервис
+2. Перейди во вкладку "Logs"
+3. Ищи ошибки при старте
+4. Частые проблемы:
+   - Неправильный DATABASE_URL
+   - Отсутствует SECRET_KEY
+   - Ошибки миграции БД
+```
 
-1. В Render открой **backend** сервис
-2. Добавь переменную:
-   ```
-   FRONTEND_URL=https://<твой-frontend>.onrender.com
-   ```
-3. Click "Manual Deploy" для перезапуска
+### Frontend не видит API
+```
+1. Проверь VITE_API_URL в настройках frontend
+2. URL должен быть вида: https://<backend>.onrender.com/api
+3. Проверь CORS в логах backend (вкладка Logs)
+4. Убедись что FRONTEND_URL установлен в backend
+```
+
+### Ошибки базы данных
+```
+1. Проверь что Neon проект активен
+2. В Neon Dashboard перейди в "Tables"
+3. Если таблиц нет — проверь логи backend
+4. Миграции должны создаться автоматически при старте
+```
+
+### Файлы не сохраняются
+⚠️ На бесплатном тарифе Render файлы хранятся временно и исчезают после перезапуска.
+
+Для постоянного хранения:
+- Подключи S3-совместимое хранилище (Cloudflare R2, AWS S3)
+- Или перейди на платный тариф Render ($7/месяц) с диском
 
 ---
 
@@ -150,42 +162,15 @@
 
 ### Free tier ограничения Render:
 - Backend засыпает через 15 минут бездействия
-- Первое запрос после "сна" может занять 30-50 секунд
+- Первый запрос после "сна" занимает 30-50 секунд
+- Файлы хранятся временно (исчезают при перезапуске)
 - Для production рассмотри платный план ($7/месяц)
 
 ### Neon:
 - Free tier: 0.5 GB хранилища
 - Проект не засыпает
 - Автоматический бэкап
-
-### Хранение файлов:
-- В бесплатном тарифе Render диск временный
-- Для надёжного хранения файлов подключи S3 (например, Cloudflare R2)
-
----
-
-## 🐛 Troubleshooting
-
-### Backend не запускается
-```
-1. Проверь логи в Render Dashboard
-2. Убедись что DATABASE_URL правильный
-3. Проверь что SECRET_KEY установлен
-```
-
-### Frontend не видит API
-```
-1. Проверь VITE_API_URL в настройках frontend
-2. URL должен заканчиваться на /api
-3. Проверь CORS в логах backend
-```
-
-### Ошибки базы данных
-```
-1. Проверь что Neon проект активен
-2. Убедись что таблица создана (миграции прошли)
-3. Проверь права доступа в Neon Dashboard
-```
+- Отличная альтернатива для продакшена
 
 ---
 
