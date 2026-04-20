@@ -1,8 +1,8 @@
 # backend/app/api/auth.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db
-from models import User
+from app.database import get_db
+from app.models import User
 from security import get_password_hash, verify_password, create_access_token
 from pydantic import BaseModel
 

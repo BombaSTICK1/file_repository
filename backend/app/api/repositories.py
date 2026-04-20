@@ -1,8 +1,8 @@
 # backend/app/api/repositories.py
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from sqlalchemy.orm import Session
-from database import get_db
-from models import Repository, Folder, File, FileVersion, User
+from app.database import get_db
+from app.models import Repository, Folder, File, FileVersion, User
 from pydantic import BaseModel
 import shutil
 import zipfile
