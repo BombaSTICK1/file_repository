@@ -16,7 +16,7 @@ services:
       - key: FRONTEND_URL
         sync: false
 
-  - type: static
+  - type: static-site
     name: file-repo-frontend
     env: static
     buildCommand: "cd frontend && npm install && npm run build"
