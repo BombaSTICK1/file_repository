@@ -3,8 +3,8 @@ import os
 import shutil
 from fastapi import APIRouter, Depends, File, UploadFile, Form, HTTPException
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models import File, FileVersion, Folder, Repository, User
+from database import get_db
+from models import File, FileVersion, Folder, Repository, User
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 import difflib

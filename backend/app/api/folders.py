@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models import Folder, FileVersion, File, Repository, User
+from database import get_db
+from models import Folder, FileVersion, File, Repository, User
 from pydantic import BaseModel
 from .deps import get_current_user
 from .utils import ensure_repository_access, ensure_folder_access, mark_file_deleted, mark_folder_deleted, mark_versions_deleted, safe_remove_file, safe_remove_tree, STORAGE_PATH

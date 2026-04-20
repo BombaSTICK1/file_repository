@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from sqlalchemy import text
-from app.database import engine, Base
-from app.api import folders, files, repositories, auth
+from database import engine, Base
+from api import folders, files, repositories, auth
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
+
 
 
 # Загружаем переменные окружения

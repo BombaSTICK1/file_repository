@@ -8,7 +8,7 @@ from typing import Iterable
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import File, FileVersion, Folder, Repository, User
+from models import File, FileVersion, Folder, Repository, User
 
 STORAGE_PATH = Path("storage")
 STORAGE_PATH.mkdir(exist_ok=True)
