@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: file-repo-backend
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: "pip install -r backend/app/requirements.txt"
+    startCommand: "cd backend/app && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+    disk:
+      name: storage
+      mountPath: /opt/render/project/src/backend/storage
+      sizeGB: 1
+
+  - type: web
+    name: file-repo-frontend
+    env: static
+    region: frankfurt
+    plan: free
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: NODE_VERSION
+        value: 20.0.0
+      - key: VITE_API_URL
+        sync: false
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff

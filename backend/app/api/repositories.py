@@ -7,15 +7,13 @@ from pydantic import BaseModel
 import shutil
 import zipfile
 from pathlib import Path
-import os
 from .folders import delete_recursive
 from .deps import get_current_user
+from .utils import STORAGE_PATH, ensure_repository_access, ensure_folder_access, get_or_create_next_version, validate_relative_path, validate_upload_size
+
 
 router = APIRouter()
 
-# Путь к хранилищу файлов
-STORAGE_PATH = Path("storage")
-STORAGE_PATH.mkdir(exist_ok=True)
 
 # Схемы Pydantic
 class RepositoryCreate(BaseModel):
@@ -34,14 +32,17 @@ def folder_to_dict(folder):
         "id": folder.id,
         "name": folder.name,
         "parent_id": folder.parent_id,
-        "children": [folder_to_dict(child) for child in folder.children],
+        "children": [folder_to_dict(child) for child in folder.children if not child.is_deleted],
+
         "files": [
             {
                 "id": f.id,
                 "name": f.name,
-                "version_count": len(f.versions)
+                "version_count": len([v for v in f.versions if not v.is_deleted])
+
             }
-            for f in folder.files
+            for f in folder.files if not f.is_deleted
+
         ]
     }
 
@@ -77,15 +78,14 @@ def get_repositories(db: Session = Depends(get_db), current_user: User = Depends
 # 3. Получить дерево репозитория
 @router.get("/{repo_id}/tree")
 def get_repository_tree(repo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Проверяем существование репозитория и права доступа
-    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found or access denied")
+    ensure_repository_access(db, repo_id, current_user.id)
+
     
     # Получаем корневые папки репозитория
     root_folders = db.query(Folder)\
-                     .filter(Folder.repository_id == repo_id, Folder.parent_id.is_(None))\
+                     .filter(Folder.repository_id == repo_id, Folder.parent_id.is_(None), Folder.is_deleted == False)\
                      .all()
+    
     
     return [folder_to_dict(f) for f in root_folders]
 
@@ -97,13 +97,11 @@ async def upload_repo_zip(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Проверяем существование репозитория и права доступа
-    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found or access denied")
-    
-    # Проверяем расширение файла
+    ensure_repository_access(db, repo_id, current_user.id)
+    validate_upload_size(file.size)
+
     if not file.filename.endswith('.zip'):
+
         raise HTTPException(status_code=400, detail="Only ZIP files are allowed")
     
     # Сохраняем ZIP во временную папку
@@ -136,8 +134,10 @@ async def upload_repo_zip(
                     # Проверяем существование папки
                     existing_folder = db.query(Folder).filter(
                         Folder.repository_id == repo_id,
-                        Folder.path == folder_path_str
+                        Folder.path == folder_path_str,
+                        Folder.is_deleted == False
                     ).first()
+                    
                     
                     if not existing_folder:
                         # Находим родительскую папку
@@ -146,8 +146,10 @@ async def upload_repo_zip(
                             parent_path = str(rel_path.parent).replace("\\", "/")
                             parent_folder = db.query(Folder).filter(
                                 Folder.repository_id == repo_id,
-                                Folder.path == parent_path
+                                Folder.path == parent_path,
+                                Folder.is_deleted == False
                             ).first()
+
                             if parent_folder:
                                 parent_folder_id = parent_folder.id
                         
@@ -175,28 +177,15 @@ async def upload_repo_zip(
                     # Ищем существующий файл
                     existing_file = db.query(File).filter(
                         File.repository_id == repo_id,
-                        File.path == file_path_str
+                        File.path == file_path_str,
+                        File.is_deleted == False
                     ).first()
                     
+                    
                     if existing_file:
-                        # Новая версия
-                        last_version = db.query(FileVersion)\
-                            .filter(FileVersion.file_id == existing_file.id)\
-                            .order_by(FileVersion.version_number.desc())\
-                            .first()
-                        new_version_number = (last_version.version_number + 1) if last_version else 1
-                        
-                        file_dir = STORAGE_PATH / str(existing_file.id)
-                        file_dir.mkdir(parents=True, exist_ok=True)
-                        version_path = file_dir / f"v{new_version_number}.bin"
-                        shutil.copy2(item, version_path)
-                        
-                        db_version = FileVersion(
-                            file_id=existing_file.id,
-                            version_number=new_version_number,
-                            file_path=str(version_path)
-                        )
-                        db.add(db_version)
+                        with open(item, "rb") as source:
+                            get_or_create_next_version(db, existing_file.id, source)
+
                         
                     else:
                         # Новый файл
@@ -205,8 +194,10 @@ async def upload_repo_zip(
                             parent_path = str(rel_path.parent).replace("\\", "/")
                             parent_folder = db.query(Folder).filter(
                                 Folder.repository_id == repo_id,
-                                Folder.path == parent_path
+                                Folder.path == parent_path,
+                                Folder.is_deleted == False
                             ).first()
+
                             if parent_folder:
                                 parent_folder_id = parent_folder.id
                         
@@ -220,17 +211,9 @@ async def upload_repo_zip(
                         db.flush()
                         db.refresh(db_file)
                         
-                        file_dir = STORAGE_PATH / str(db_file.id)
-                        file_dir.mkdir(parents=True, exist_ok=True)
-                        version_path = file_dir / "v1.bin"
-                        shutil.copy2(item, version_path)
-                        
-                        db_version = FileVersion(
-                            file_id=db_file.id,
-                            version_number=1,
-                            file_path=str(version_path)
-                        )
-                        db.add(db_version)
+                        with open(item, "rb") as source:
+                            get_or_create_next_version(db, db_file.id, source)
+
         
         # Внутри try блока после распаковки:
         create_structure(extract_path, repo_id, extract_path, db)
@@ -251,12 +234,12 @@ async def upload_repo_zip(
 
 @router.delete("/{repo_id}")
 def delete_repository(repo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found or access denied")
+    repo = ensure_repository_access(db, repo_id, current_user.id)
+
     
     # Получаем все папки репозитория
-    folders = db.query(Folder).filter(Folder.repository_id == repo_id).all()
+    folders = db.query(Folder).filter(Folder.repository_id == repo_id, Folder.is_deleted == False).all()
+
     for folder in folders:
         delete_recursive(folder.id, db)  # ← Используем ту же функцию
     
@@ -272,51 +255,28 @@ async def upload_single_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Проверяем существование репозитория и права доступа
-    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found or access denied")
-    
-    # Проверяем существование папки
-    folder = db.query(Folder).filter(
-        Folder.id == folder_id,
-        Folder.repository_id == repo_id
-    ).first()
-    if not folder:
+    ensure_repository_access(db, repo_id, current_user.id)
+    validate_upload_size(file.size)
+
+    folder = ensure_folder_access(db, folder_id, current_user.id)
+    if folder.repository_id != repo_id:
         raise HTTPException(status_code=404, detail="Folder not found")
     
+
     # Ищем существующий файл с таким именем в этой папке
     existing_file = db.query(File).filter(
         File.name == file.filename,
-        File.folder_id == folder_id
+        File.folder_id == folder_id,
+        File.is_deleted == False
     ).first()
     
+    
     if existing_file:
-        # Создаём новую версию существующего файла
-        last_version = db.query(FileVersion)\
-            .filter(FileVersion.file_id == existing_file.id)\
-            .order_by(FileVersion.version_number.desc())\
-            .first()
-        new_version_number = (last_version.version_number + 1) if last_version else 1
-        
-        # Сохраняем файл на диск
-        file_dir = STORAGE_PATH / str(existing_file.id)
-        file_dir.mkdir(parents=True, exist_ok=True)
-        version_path = file_dir / f"v{new_version_number}.bin"
-        
-        with open(version_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        # Создаём запись версии
-        db_version = FileVersion(
-            file_id=existing_file.id,
-            version_number=new_version_number,
-            file_path=str(version_path)
-        )
-        db.add(db_version)
+        new_version_number = get_or_create_next_version(db, existing_file.id, file.file)
         db.commit()
         
         return {"message": "New version created", "version": new_version_number}
+    
     
     else:
         # Создаём новый файл
@@ -329,21 +289,9 @@ async def upload_single_file(
         db.commit()
         db.refresh(db_file)
         
-        # Сохраняем первую версию
-        file_dir = STORAGE_PATH / str(db_file.id)
-        file_dir.mkdir(parents=True, exist_ok=True)
-        version_path = file_dir / "v1.bin"
-        
-        with open(version_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        db_version = FileVersion(
-            file_id=db_file.id,
-            version_number=1,
-            file_path=str(version_path)
-        )
-        db.add(db_version)
+        get_or_create_next_version(db, db_file.id, file.file)
         db.commit()
+        
         
         return {"message": "New file created"}
 
@@ -356,21 +304,17 @@ async def upload_file_with_path(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Проверяем существование репозитория и права доступа
-    repo = db.query(Repository).filter(Repository.id == repo_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found or access denied")
-    
-    # Проверяем папку
-    base_folder = db.query(Folder).filter(
-        Folder.id == folder_id,
-        Folder.repository_id == repo_id
-    ).first()
-    if not base_folder:
+    ensure_repository_access(db, repo_id, current_user.id)
+    validate_upload_size(file.size)
+
+    base_folder = ensure_folder_access(db, folder_id, current_user.id)
+    if base_folder.repository_id != repo_id:
         raise HTTPException(status_code=404, detail="Base folder not found")
     
-    # Разбиваем путь на компоненты
+
+    validate_relative_path(relative_path)
     path_parts = [p for p in relative_path.split("/") if p]
+
     if not path_parts:
         raise HTTPException(status_code=400, detail="Invalid path")
     
@@ -388,8 +332,10 @@ async def upload_file_with_path(
         # Ищем существующую папку
         existing_folder = db.query(Folder).filter(
             Folder.repository_id == repo_id,
-            Folder.path == folder_path
+            Folder.path == folder_path,
+            Folder.is_deleted == False
         ).first()
+        
         
         if existing_folder:
             current_parent_id = existing_folder.id
@@ -408,35 +354,17 @@ async def upload_file_with_path(
     
     # Обрабатываем файл
     file_name = path_parts[-1]
-    full_path = f"{current_base_path}/{relative_path}" if current_base_path else relative_path
-    
-    # Ищем существующий файл
     existing_file = db.query(File).filter(
+
         File.name == file_name,
-        File.folder_id == current_parent_id
+        File.folder_id == current_parent_id,
+        File.is_deleted == False
     ).first()
     
+    
     if existing_file:
-        # Новая версия
-        last_version = db.query(FileVersion)\
-            .filter(FileVersion.file_id == existing_file.id)\
-            .order_by(FileVersion.version_number.desc())\
-            .first()
-        new_version = (last_version.version_number + 1) if last_version else 1
-        
-        file_dir = STORAGE_PATH / str(existing_file.id)
-        file_dir.mkdir(parents=True, exist_ok=True)
-        version_path = file_dir / f"v{new_version}.bin"
-        
-        with open(version_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        db_version = FileVersion(
-            file_id=existing_file.id,
-            version_number=new_version,
-            file_path=str(version_path)
-        )
-        db.add(db_version)
+        get_or_create_next_version(db, existing_file.id, file.file)
+
     else:
         # Новый файл
         new_file = File(
@@ -448,19 +376,8 @@ async def upload_file_with_path(
         db.flush()
         db.refresh(new_file)
         
-        file_dir = STORAGE_PATH / str(new_file.id)
-        file_dir.mkdir(parents=True, exist_ok=True)
-        version_path = file_dir / "v1.bin"
-        
-        with open(version_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        db_version = FileVersion(
-            file_id=new_file.id,
-            version_number=1,
-            file_path=str(version_path)
-        )
-        db.add(db_version)
+        get_or_create_next_version(db, new_file.id, file.file)
+
     
     db.commit()
     return {"message": "File processed"}

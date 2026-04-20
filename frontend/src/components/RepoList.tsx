@@ -1,9 +1,6 @@
 // frontend/src/components/RepoList.tsx
 import { useState, useEffect } from 'react';
 import {
-  List,
-  ListItem,
-  ListItemText,
   Button,
   Paper,
   Box,
@@ -12,18 +9,10 @@ import {
   CardContent,
   CardActions,
   Grid,
-  Fab,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+
 import client from '../api/client';
 import CreateRepoForm from './CreateRepoForm';
 import RepoTree from './RepoTree';
@@ -76,10 +65,16 @@ export default function RepoList({ language }: RepoListProps) {
               display: 'flex',
               alignItems: 'center',
               mb: 3,
-              pb: 2,
-              borderBottom: '1px solid #d0d7de',
+              p: 2.5,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 4,
+              backgroundColor: 'rgba(255,255,255,0.72)',
+              backdropFilter: 'blur(12px)',
+              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
             }}
           >
+
             <FolderIcon sx={{ mr: 2, color: '#0969da', fontSize: 32 }} />
             <Box sx={{ flexGrow: 1 }}>
               <Typography variant="h5" sx={{ fontWeight: 600 }}>
@@ -93,13 +88,15 @@ export default function RepoList({ language }: RepoListProps) {
               variant="outlined"
               onClick={() => setSelectedRepoId(null)}
               sx={{
-                borderColor: '#d0d7de',
-                color: '#24292e',
+                borderColor: 'divider',
+                color: 'text.primary',
+                backgroundColor: 'rgba(255,255,255,0.7)',
                 '&:hover': {
-                  backgroundColor: '#f6f8fa',
+                  backgroundColor: 'rgba(255,255,255,0.92)',
                 },
               }}
             >
+
               ← {t.backToList}
             </Button>
           </Box>
@@ -118,10 +115,16 @@ export default function RepoList({ language }: RepoListProps) {
               justifyContent: 'space-between',
               alignItems: 'center',
               mb: 3,
-              pb: 2,
-              borderBottom: '1px solid #d0d7de',
+              p: 2.5,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 4,
+              backgroundColor: 'rgba(255,255,255,0.72)',
+              backdropFilter: 'blur(12px)',
+              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)',
             }}
           >
+
             <Box>
               <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
                 {t.myRepositories}
@@ -135,11 +138,13 @@ export default function RepoList({ language }: RepoListProps) {
               startIcon={<AddIcon />}
               onClick={() => setShowCreateForm(true)}
               sx={{
-                backgroundColor: '#238636',
+                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                boxShadow: '0 14px 26px rgba(37, 99, 235, 0.18)',
                 '&:hover': {
-                  backgroundColor: '#2ea043',
+                  background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
                 },
                 fontWeight: 600,
+
               }}
             >
               {t.createRepo}
@@ -159,17 +164,20 @@ export default function RepoList({ language }: RepoListProps) {
           {repos.length === 0 ? (
             <Paper
               sx={{
-                p: 4,
+                p: 5,
                 textAlign: 'center',
-                backgroundColor: '#f6f8fa',
-                border: '1px dashed #d0d7de',
-                borderRadius: 2,
+                backgroundColor: 'rgba(255,255,255,0.72)',
+                border: '1px dashed rgba(148, 163, 184, 0.45)',
+                borderRadius: 5,
+                backdropFilter: 'blur(14px)',
               }}
             >
+
               <FolderIcon
                 sx={{
                   fontSize: 48,
-                  color: '#d0d7de',
+                  color: '#94a3b8',
+
                   mb: 2,
                 }}
               />
@@ -184,10 +192,12 @@ export default function RepoList({ language }: RepoListProps) {
                 startIcon={<AddIcon />}
                 onClick={() => setShowCreateForm(true)}
                 sx={{
-                  backgroundColor: '#0969da',
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  boxShadow: '0 14px 26px rgba(37, 99, 235, 0.18)',
                   '&:hover': {
-                    backgroundColor: '#0860ca',
+                    background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
                   },
+
                 }}
               >
                 {t.createRepo}
@@ -196,19 +206,23 @@ export default function RepoList({ language }: RepoListProps) {
           ) : (
             <Grid container spacing={3}>
               {repos.map(repo => (
-                <Grid item xs={12} sm={6} md={4} key={repo.id}>
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={repo.id}>
+
                   <Card
                     sx={{
                       height: '100%',
                       display: 'flex',
                       flexDirection: 'column',
                       transition: 'all 0.3s ease',
-                      border: '1px solid #d0d7de',
+                      border: '1px solid rgba(148, 163, 184, 0.22)',
+                      backgroundColor: 'rgba(255,255,255,0.76)',
+                      backdropFilter: 'blur(12px)',
                       '&:hover': {
-                        boxShadow: '0 3px 12px rgba(0, 0, 0, 0.15)',
-                        borderColor: '#0969da',
-                        transform: 'translateY(-4px)',
+                        boxShadow: '0 18px 38px rgba(15, 23, 42, 0.12)',
+                        borderColor: '#2563eb',
+                        transform: 'translateY(-6px)',
                       },
+
                       cursor: 'pointer',
                     }}
                   >
@@ -223,7 +237,8 @@ export default function RepoList({ language }: RepoListProps) {
                         <FolderIcon
                           sx={{
                             mr: 1.5,
-                            color: '#0969da',
+                            color: '#2563eb',
+
                             fontSize: 28,
                           }}
                         />
@@ -231,7 +246,8 @@ export default function RepoList({ language }: RepoListProps) {
                           variant="h6"
                           sx={{
                             fontWeight: 600,
-                            color: '#24292e',
+                            color: 'text.primary',
+
                             wordBreak: 'break-word',
                           }}
                         >
@@ -245,7 +261,8 @@ export default function RepoList({ language }: RepoListProps) {
                           ml: 4.5,
                         }}
                       >
-                        Нажмите для открытия
+Нажмите, чтобы открыть
+
                       </Typography>
                     </CardContent>
 

@@ -76,30 +76,51 @@ export default function FolderUploadButton({
         variant="outlined" 
         size="small"
         onClick={() => setOpen(true)}
-        sx={{ mr: 1 }}
+        sx={{
+          mr: 1,
+          borderColor: 'divider',
+          backgroundColor: 'rgba(255,255,255,0.72)',
+          '&:hover': {
+            backgroundColor: 'rgba(255,255,255,0.92)',
+          },
+        }}
       >
         Upload Folder
       </Button>
       
-      <Dialog open={open} onClose={() => setOpen(false)}>
+      
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+
         <DialogTitle>Upload Folder</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            Select a folder to upload its contents
+            Выберите папку для загрузки её содержимого
           </Typography>
+          <Box
+            sx={{
+              p: 3,
+              borderRadius: 4,
+              border: '2px dashed',
+              borderColor: 'divider',
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.92), rgba(248,250,252,0.88))',
+            }}
+          >
             <input 
-            type="file" 
-            // @ts-ignore
-            webkitdirectory="true"
-            // @ts-ignore
-            directory="true"
-            multiple
-            onChange={handleFolderSelect}
-            disabled={uploading}
+              type="file" 
+              // @ts-ignore
+              webkitdirectory="true"
+              // @ts-ignore
+              directory="true"
+              multiple
+              onChange={handleFolderSelect}
+              disabled={uploading}
             />
+          </Box>
+
           {uploading && (
             <Box sx={{ mt: 2 }}>
-              <Typography variant="body2">Uploading... {progress}%</Typography>
+              <Typography variant="body2">Загрузка... {progress}%</Typography>
+
               <LinearProgress variant="determinate" value={progress} />
             </Box>
           )}

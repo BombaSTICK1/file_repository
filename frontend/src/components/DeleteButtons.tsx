@@ -1,5 +1,7 @@
 // frontend/src/components/DeleteButtons.tsx
-import { Button } from '@mui/material';
+import { Button, IconButton, Tooltip } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+
 import client from '../api/client';
 
 interface DeleteRepoButtonProps {
@@ -9,15 +11,15 @@ interface DeleteRepoButtonProps {
 
 export function DeleteRepoButton({ repoId, onDeleted }: DeleteRepoButtonProps) {
   const handleDelete = async () => {
-    if (window.confirm('Delete this repository? This cannot be undone.')) {
+    if (window.confirm('Удалить репозиторий? Это действие нельзя отменить.')) {
       try {
         await client.delete(`/repos/${repoId}`);
         onDeleted();
-      } catch (error) {
-        console.error('Delete error:', error);
-        alert('Failed to delete repository');
+      } catch {
+        alert('Не удалось удалить репозиторий');
       }
     }
+
   };
 
   return (
@@ -26,10 +28,16 @@ export function DeleteRepoButton({ repoId, onDeleted }: DeleteRepoButtonProps) {
       color="error" 
       size="small"
       onClick={handleDelete}
+      startIcon={<DeleteOutlineIcon />}
+      sx={{
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.72)',
+      }}
     >
-      Delete Repository
+      Удалить репозиторий
     </Button>
   );
+
 }
 
 interface DeleteItemButtonProps {
@@ -40,26 +48,36 @@ interface DeleteItemButtonProps {
 
 export function DeleteItemButton({ type, id, onDeleted }: DeleteItemButtonProps) {
   const handleDelete = async () => {
-    if (window.confirm(`Delete this ${type}?`)) {
+    if (window.confirm(type === 'folder' ? 'Удалить папку?' : 'Удалить файл?')) {
       try {
         await client.delete(`/${type}s/${id}`);
         onDeleted();
-      } catch (error) {
-        console.error('Delete error:', error);
-        alert(`Failed to delete ${type}`);
+      } catch {
+        alert(type === 'folder' ? 'Не удалось удалить папку' : 'Не удалось удалить файл');
       }
     }
+
   };
 
   return (
-    <Button 
-      variant="outlined" 
-      color="error" 
-      size="small"
-      onClick={handleDelete}
-      sx={{ ml: 1 }}
-    >
-      Delete
-    </Button>
+    <Tooltip title={type === 'folder' ? 'Удалить папку' : 'Удалить файл'}>
+      <IconButton
+        color="error"
+        size="small"
+        onClick={handleDelete}
+        sx={{
+          ml: 1,
+          border: '1px solid',
+          borderColor: 'rgba(239, 68, 68, 0.24)',
+          backgroundColor: 'rgba(255,255,255,0.6)',
+          '&:hover': {
+            backgroundColor: 'rgba(239, 68, 68, 0.08)',
+          },
+        }}
+      >
+        <DeleteOutlineIcon fontSize="small" />
+      </IconButton>
+    </Tooltip>
   );
+
 }

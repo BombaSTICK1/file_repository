@@ -28,23 +28,86 @@ const createAppTheme = (darkMode: boolean) =>
     palette: {
       mode: darkMode ? 'dark' : 'light',
       primary: {
-        main: '#0969da',
+        main: '#2563eb',
       },
       secondary: {
-        main: '#238636',
+        main: '#10b981',
       },
       background: {
-        default: darkMode ? '#0d1117' : '#f6f8fa',
-        paper: darkMode ? '#161b22' : '#ffffff',
+        default: darkMode ? '#0b1220' : '#f4f7fb',
+        paper: darkMode ? '#111827' : '#ffffff',
       },
       text: {
-        primary: darkMode ? '#e6edf3' : '#24292e',
+        primary: darkMode ? '#e5eefc' : '#172033',
+        secondary: darkMode ? '#9fb0cc' : '#5b6b82',
       },
+      divider: darkMode ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.22)',
+    },
+    shape: {
+      borderRadius: 16,
     },
     typography: {
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+      h5: {
+        fontWeight: 700,
+      },
+      h6: {
+        fontWeight: 700,
+      },
+      button: {
+        textTransform: 'none',
+        fontWeight: 600,
+      },
+    },
+    components: {
+      MuiAppBar: {
+        styleOverrides: {
+          root: {
+            backgroundImage: darkMode
+              ? 'linear-gradient(135deg, rgba(17,24,39,0.95), rgba(30,41,59,0.9))'
+              : 'linear-gradient(135deg, rgba(37,99,235,0.96), rgba(59,130,246,0.92))',
+            backdropFilter: 'blur(14px)',
+            boxShadow: darkMode
+              ? '0 10px 40px rgba(0, 0, 0, 0.35)'
+              : '0 10px 30px rgba(37, 99, 235, 0.18)',
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            backgroundImage: 'none',
+          },
+        },
+      },
+      MuiButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 12,
+            paddingInline: 14,
+          },
+        },
+      },
+      MuiCard: {
+        styleOverrides: {
+          root: {
+            borderRadius: 20,
+            boxShadow: darkMode
+              ? '0 12px 30px rgba(0, 0, 0, 0.28)'
+              : '0 10px 30px rgba(15, 23, 42, 0.08)',
+          },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            borderRadius: 20,
+          },
+        },
+      },
     },
   });
+
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -74,8 +137,8 @@ function App() {
   useEffect(() => {
     // Проверяем наличие токена при загрузке
     const token = localStorage.getItem('token');
-    console.log('Проверяю токен при загрузке App:', token ? 'Найден' : 'Не найден');
     if (token) {
+
       setIsAuthenticated(true);
       // Пытаемся получить username из localStorage
       const savedUsername = localStorage.getItem('username');
@@ -128,9 +191,9 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-          {/* Header на странице авторизации */}
           <AppBar position="sticky">
-            <Toolbar>
+            <Toolbar sx={{ minHeight: 72 }}>
+
               <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
                 <StorageIcon sx={{ fontSize: 32, mr: 2 }} />
                 <Box>
@@ -168,9 +231,19 @@ function App() {
               </IconButton>
             </Toolbar>
           </AppBar>
-          <Box sx={{ flexGrow: 1 }} />
-          <AuthForm language={language} />
-          <Box sx={{ flexGrow: 1 }} />
+          <Box
+            sx={{
+              flexGrow: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              px: 2,
+              py: { xs: 4, md: 8 },
+            }}
+          >
+            <AuthForm language={language} />
+          </Box>
+
           {/* Footer на странице авторизации */}
           <Box
             component="footer"
@@ -179,7 +252,10 @@ function App() {
               borderColor: 'divider',
               py: 3,
               textAlign: 'center',
+              backgroundColor: 'rgba(255,255,255,0.45)',
+              backdropFilter: 'blur(10px)',
             }}
+
           >
             <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
               {t.copyright}
@@ -197,9 +273,9 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-        {/* Header */}
         <AppBar position="sticky">
-          <Toolbar>
+          <Toolbar sx={{ minHeight: 74 }}>
+
             <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
               <StorageIcon sx={{ fontSize: 32, mr: 2 }} />
               <Box>
@@ -264,9 +340,10 @@ function App() {
         </AppBar>
 
         {/* Основной контент */}
-        <Container maxWidth="lg" sx={{ py: 4, flexGrow: 1 }}>
+        <Container maxWidth="xl" sx={{ py: { xs: 3, md: 5 }, flexGrow: 1 }}>
           <RepoList language={language} />
         </Container>
+
 
         {/* Footer */}
         <Box
@@ -277,12 +354,17 @@ function App() {
             mt: 'auto',
           }}
         >
-          <Container maxWidth="lg">
+          <Container maxWidth="xl">
             <Box
               sx={{
                 py: 4,
                 textAlign: 'center',
+                backgroundColor: 'rgba(255,255,255,0.35)',
+                backdropFilter: 'blur(10px)',
+                borderRadius: 3,
+                my: 2,
               }}
+
             >
               <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
                 {t.copyright}

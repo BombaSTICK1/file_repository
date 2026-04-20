@@ -1,5 +1,6 @@
 # backend/app/models.py
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, ForeignKey
+
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -26,7 +27,9 @@ class Folder(Base):
     name = Column(String, index=True)
     parent_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
     repository_id = Column(Integer, ForeignKey("repositories.id"))
-    path = Column(String, index=True)  # ← ДОБАВЬ ЭТУ СТРОКУ
+    path = Column(String, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+
     
     repository = relationship("Repository", back_populates="folders")
     children = relationship("Folder", back_populates="parent")
@@ -37,9 +40,11 @@ class File(Base):
     __tablename__ = "files"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    path = Column(String, nullable=True)  # ← для относительного пути в архивах
+    path = Column(String, nullable=True)
     folder_id = Column(Integer, ForeignKey("folders.id"))
     repository_id = Column(Integer, ForeignKey("repositories.id"))
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    
     
     folder = relationship("Folder", back_populates="files")
     versions = relationship("FileVersion", back_populates="file", order_by="FileVersion.version_number")
@@ -50,6 +55,9 @@ class FileVersion(Base):
     file_id = Column(Integer, ForeignKey("files.id"))
     version_number = Column(Integer, index=True)
     file_path = Column(String)
-    commit_message = Column(String, nullable=True)  # Сообщение при обновлении
+    commit_message = Column(String, nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+
     
     file = relationship("File", back_populates="versions")

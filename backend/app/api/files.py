@@ -6,16 +6,14 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import File, FileVersion, Folder, Repository, User
 from pydantic import BaseModel
-from pathlib import Path
 from fastapi.responses import FileResponse
 import difflib
 from .deps import get_current_user
+from .utils import ensure_file_access, ensure_folder_access, get_or_create_next_version, mark_file_deleted, mark_versions_deleted, safe_remove_file, safe_remove_tree, STORAGE_PATH, validate_upload_size
+
 
 router = APIRouter()
 
-# Убедимся, что storage существует
-STORAGE_PATH = Path("storage")
-STORAGE_PATH.mkdir(exist_ok=True)
 
 class FileOut(BaseModel):
     id: int
@@ -33,41 +31,36 @@ async def upload_file(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Проверяем, существует ли папка и принадлежит ли репозиторий пользователю
-    folder = db.query(Folder).filter(Folder.id == folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    # Проверяем права доступа к репозиторию
-    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=403, detail="Access denied")
+    validate_upload_size(file.size)
+    folder = ensure_folder_access(db, folder_id, current_user.id)
 
-    # Создаём запись файла в БД
-    db_file = File(name=file.filename, folder_id=folder_id)
+    existing_file = db.query(File).filter(
+        File.name == file.filename,
+        File.folder_id == folder_id,
+        File.is_deleted == False
+    ).first()
+
+    if existing_file:
+        get_or_create_next_version(db, existing_file.id, file.file)
+        db.commit()
+
+        version_count = db.query(FileVersion).filter(FileVersion.file_id == existing_file.id, FileVersion.is_deleted == False).count()
+        return {
+            "id": existing_file.id,
+            "name": existing_file.name,
+            "folder_id": existing_file.folder_id,
+            "version_count": version_count
+        }
+
+    db_file = File(name=file.filename, folder_id=folder_id, repository_id=folder.repository_id)
+
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
 
-    # Создаём директорию для версий этого файла
-    file_dir = STORAGE_PATH / str(db_file.id)
-    file_dir.mkdir(exist_ok=True)
-
-    # Путь к первой версии
-    version_path = file_dir / "v1.bin"
-
-    # Сохраняем файл на диск
-    with open(version_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # Создаём запись версии
-    db_version = FileVersion(
-        file_id=db_file.id,
-        version_number=1,
-        file_path=str(version_path)
-    )
-    db.add(db_version)
+    get_or_create_next_version(db, db_file.id, file.file)
     db.commit()
+
 
     return {
         "id": db_file.id,
@@ -84,48 +77,16 @@ async def upload_new_version(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Находим существующий файл и проверяем права доступа
-    db_file = db.query(File).filter(File.id == file_id).first()
-    if not db_file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Проверяем права доступа через репозиторий
-    folder = db.query(Folder).filter(Folder.id == db_file.folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=403, detail="Access denied")
+    validate_upload_size(file.size)
+    db_file, _, _ = ensure_file_access(db, file_id, current_user.id)
 
-    # Определяем номер новой версии
-    last_version = db.query(FileVersion)\
-                     .filter(FileVersion.file_id == file_id)\
-                     .order_by(FileVersion.version_number.desc())\
-                     .first()
-    new_version_number = (last_version.version_number + 1) if last_version else 1
-
-    # Путь к новой версии
-    file_dir = STORAGE_PATH / str(file_id)
-    file_dir.mkdir(exist_ok=True)
-    version_path = file_dir / f"v{new_version_number}.bin"
-
-    # Сохраняем файл
-    with open(version_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # Создаём запись версии с коммит-сообщением
-    db_version = FileVersion(
-        file_id=file_id,
-        version_number=new_version_number,
-        file_path=str(version_path),
-        commit_message=commit_message if commit_message else None
-    )
-    db.add(db_version)
+    get_or_create_next_version(db, file_id, file.file, commit_message)
     db.commit()
 
+
     # Возвращаем данные файла
-    version_count = db.query(FileVersion).filter(FileVersion.file_id == file_id).count()
+    version_count = db.query(FileVersion).filter(FileVersion.file_id == file_id, FileVersion.is_deleted == False).count()
+
     return {
         "id": db_file.id,
         "name": db_file.name,
@@ -139,11 +100,13 @@ def get_files(db: Session = Depends(get_db), current_user: User = Depends(get_cu
     files = db.query(File)\
              .join(Folder)\
              .join(Repository)\
-             .filter(Repository.owner_id == current_user.id)\
+             .filter(Repository.owner_id == current_user.id, File.is_deleted == False, Folder.is_deleted == False)\
              .all()
+
     result = []
     for f in files:
-        version_count = db.query(FileVersion).filter(FileVersion.file_id == f.id).count()
+        version_count = db.query(FileVersion).filter(FileVersion.file_id == f.id, FileVersion.is_deleted == False).count()
+
         result.append({
             "id": f.id,
             "name": f.name,
@@ -157,26 +120,15 @@ def get_file_content(file_id: int, version_number: int, db: Session = Depends(ge
     """
     Получить содержимое файла определённой версии
     """
-    # Находим файл и проверяем права доступа
-    db_file = db.query(File).filter(File.id == file_id).first()
-    if not db_file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Проверяем права доступа через репозиторий
-    folder = db.query(Folder).filter(Folder.id == db_file.folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    ensure_file_access(db, file_id, current_user.id)
+
     version = db.query(FileVersion)\
-                .filter(FileVersion.file_id == file_id, FileVersion.version_number == version_number)\
+                .filter(FileVersion.file_id == file_id, FileVersion.version_number == version_number, FileVersion.is_deleted == False)\
                 .first()
+
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
-
+    
     file_path = version.file_path
     # Если путь относительный, преобразуем его в абсолютный
     if not os.path.isabs(file_path):
@@ -201,26 +153,15 @@ def get_file_content(file_id: int, version_number: int, db: Session = Depends(ge
 
 @router.get("/{file_id}/versions/{version_number}")
 def download_file_version(file_id: int, version_number: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Находим файл и проверяем права доступа
-    db_file = db.query(File).filter(File.id == file_id).first()
-    if not db_file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Проверяем права доступа через репозиторий
-    folder = db.query(Folder).filter(Folder.id == db_file.folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    ensure_file_access(db, file_id, current_user.id)
+
     version = db.query(FileVersion)\
-                .filter(FileVersion.file_id == file_id, FileVersion.version_number == version_number)\
+                .filter(FileVersion.file_id == file_id, FileVersion.version_number == version_number, FileVersion.is_deleted == False)\
                 .first()
+
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
-
+    
     if not os.path.exists(version.file_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
 
@@ -228,30 +169,21 @@ def download_file_version(file_id: int, version_number: int, db: Session = Depen
 
 @router.get("/{file_id}/versions")
 def get_file_versions(file_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Находим файл и проверяем права доступа
-    db_file = db.query(File).filter(File.id == file_id).first()
-    if not db_file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Проверяем права доступа через репозиторий
-    folder = db.query(Folder).filter(Folder.id == db_file.folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    ensure_file_access(db, file_id, current_user.id)
+
     versions = db.query(FileVersion)\
-                 .filter(FileVersion.file_id == file_id)\
+                 .filter(FileVersion.file_id == file_id, FileVersion.is_deleted == False)\
                  .order_by(FileVersion.version_number.desc())\
                  .all()
+
     return [
         {
             "id": v.id,
             "version_number": v.version_number,
             "commit_message": v.commit_message or f"Version {v.version_number}",
-            "file_path": v.file_path
+            "file_path": v.file_path,
+            "size_bytes": v.size_bytes
+
         }
         for v in versions
     ]
@@ -262,29 +194,18 @@ def compare_versions(file_id: int, v1: int, v2: int, db: Session = Depends(get_d
     Сравнить две версии файла
     v1 - старая версия, v2 - новая версия
     """
-    # Находим файл и проверяем права доступа
-    db_file = db.query(File).filter(File.id == file_id).first()
-    if not db_file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Проверяем права доступа через репозиторий
-    folder = db.query(Folder).filter(Folder.id == db_file.folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    ensure_file_access(db, file_id, current_user.id)
+
     version1 = db.query(FileVersion)\
-                 .filter(FileVersion.file_id == file_id, FileVersion.version_number == v1)\
+                 .filter(FileVersion.file_id == file_id, FileVersion.version_number == v1, FileVersion.is_deleted == False)\
                  .first()
     version2 = db.query(FileVersion)\
-                 .filter(FileVersion.file_id == file_id, FileVersion.version_number == v2)\
+                 .filter(FileVersion.file_id == file_id, FileVersion.version_number == v2, FileVersion.is_deleted == False)\
                  .first()
     
     if not version1 or not version2:
         raise HTTPException(status_code=404, detail="Version not found")
+    
     
     # Читаем обе версии
     def read_file(file_path):
@@ -318,32 +239,16 @@ def compare_versions(file_id: int, v1: int, v2: int, db: Session = Depends(get_d
 
 @router.delete("/{file_id}")
 def delete_file(file_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Находим файл и проверяем права доступа
-    file = db.query(File).filter(File.id == file_id).first()
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Проверяем права доступа через репозиторий
-    folder = db.query(Folder).filter(Folder.id == file.folder_id).first()
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
-    repo = db.query(Repository).filter(Repository.id == folder.repository_id, Repository.owner_id == current_user.id).first()
-    if not repo:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    # Удаляем все версии с диска
-    versions = db.query(FileVersion).filter(FileVersion.file_id == file_id).all()
+    file, _, _ = ensure_file_access(db, file_id, current_user.id)
+
+    versions = db.query(FileVersion).filter(FileVersion.file_id == file_id, FileVersion.is_deleted == False).all()
+    mark_versions_deleted(versions)
     for ver in versions:
-        if os.path.exists(ver.file_path):
-            os.remove(ver.file_path)
-        db.delete(ver)
-    
-    # Удаляем папку файла
+        safe_remove_file(ver.file_path)
+
     file_dir = STORAGE_PATH / str(file_id)
-    if file_dir.exists():
-        shutil.rmtree(file_dir)  # ← УДАЛЯЕТ ВСЮ ПАПКУ
-    
-    db.delete(file)
+    safe_remove_tree(file_dir)
+
+    mark_file_deleted(file)
     db.commit()
-    return {"message": "File and storage deleted"}
+    return {"message": "File deleted"}

@@ -12,8 +12,8 @@ import FileUploadButton from './FileUploadButton';
 import FolderUploadButton from './FolderUploadButton';
 import CreateFolderButton from './CreateFolderButton';
 import { DeleteRepoButton, DeleteItemButton } from './DeleteButtons';
-import FileVersionList from './FileVersionList';
 import FileViewer from './FileViewer';
+
 
 interface FolderNode {
   id: number;
@@ -66,11 +66,17 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
           sx={{ 
             display: 'flex', 
             alignItems: 'center', 
-            '&:hover': { backgroundColor: '#f6f8fa', borderRadius: '4px' }
+            px: 1,
+            py: 0.75,
+            borderRadius: 2,
+            transition: 'all 0.2s ease',
+            '&:hover': { backgroundColor: 'rgba(37, 99, 235, 0.08)' }
           }}
         >
+
           <FolderIcon 
-            sx={{ mr: 1, color: '#58a6ff', cursor: 'pointer' }} 
+            sx={{ mr: 1.25, color: '#3b82f6', cursor: 'pointer' }} 
+
             onClick={() => toggleFolder(node.id)}
           />
           <Typography 
@@ -109,11 +115,15 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
                 sx={{ 
                   display: 'flex', 
                   alignItems: 'center', 
-                  py: 0.5,
-                  '&:hover': { backgroundColor: '#f6f8fa', borderRadius: '4px' },
+                  py: 0.9,
+                  px: 1.25,
+                  '&:hover': { backgroundColor: 'rgba(16, 185, 129, 0.08)', borderRadius: '10px' },
                   cursor: 'pointer',
-                  pl: 2
+                  pl: 2,
+                  borderRadius: 2,
+                  transition: 'all 0.2s ease'
                 }}
+
                 onClick={() => setSelectedFile({ id: file.id, name: file.name, version: file.version_count })}
               >
                 <InsertDriveFileIcon sx={{ mr: 1, fontSize: 16 }} />
@@ -132,8 +142,30 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
   };
 
   return (
-    <Paper sx={{ p: 2, border: '1px solid #e1e4e8' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
+    <Paper
+      sx={{
+        p: { xs: 2, md: 3 },
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 5,
+        backgroundColor: 'rgba(255,255,255,0.74)',
+        backdropFilter: 'blur(14px)',
+        boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
+      }}
+    >
+
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          mb: 3,
+          alignItems: 'center',
+          pb: 2,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+
         <Typography variant="h6">Содержимое репозитория</Typography>
         <Box>
           {/* Кнопки загрузки в корень (если есть корневая папка) */}
@@ -161,7 +193,22 @@ export default function RepoTree({ repoId, onRepoDeleted }: RepoTreeProps) {
       </Box>
 
       <Box sx={{ mt: 2 }}>
-        {treeData.length > 0 ? renderTree(treeData) : 'Репозиторий пуст'}
+        {treeData.length > 0 ? renderTree(treeData) : (
+          <Box
+            sx={{
+              py: 6,
+              textAlign: 'center',
+              color: 'text.secondary',
+              border: '1px dashed',
+              borderColor: 'divider',
+              borderRadius: 4,
+              backgroundColor: 'rgba(255,255,255,0.42)',
+            }}
+          >
+            Репозиторий пуст
+          </Box>
+        )}
+
       </Box>
 
       {/* Просмотр содержимого файла */}

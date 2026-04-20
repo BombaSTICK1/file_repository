@@ -51,13 +51,23 @@ export default function FileViewer({ fileId, fileName, onClose }: FileViewerProp
 
   useEffect(() => {
     if (versions.length > 0) {
-      loadContent(selectedVersion);
+      const hasSelectedVersion = versions.some((version) => version.version_number === selectedVersion);
+      const versionToLoad = hasSelectedVersion ? selectedVersion : versions[0].version_number;
+
+      if (versionToLoad !== selectedVersion) {
+        setSelectedVersion(versionToLoad);
+        return;
+      }
+
+      loadContent(versionToLoad);
     }
-  }, [selectedVersion]);
+  }, [selectedVersion, versions]);
+
 
   const loadVersions = async () => {
     setLoading(true);
     setError('');
+    setContent('');
     try {
       const res = await client.get(`/files/${fileId}/versions`);
       setVersions(res.data);
@@ -65,23 +75,25 @@ export default function FileViewer({ fileId, fileName, onClose }: FileViewerProp
         setSelectedVersion(res.data[0].version_number);
       }
     } catch (err: any) {
+
       const errorMsg = err.response?.data?.detail || 'Ошибка при загрузке версий';
       setError(errorMsg);
-      console.error('Ошибка загрузки версий:', err);
+
     } finally {
       setLoading(false);
     }
   };
 
   const loadContent = async (versionNumber: number) => {
+    setError('');
     try {
       const res = await client.get(`/files/${fileId}/versions/${versionNumber}/content`);
-      console.log('Conteúdo carregado:', res.data);
-      setContent(res.data.content);
+      setContent(res.data.content ?? '');
     } catch (err: any) {
+
       const errorMsg = err.response?.data?.detail || 'Ошибка при загрузке содержимого';
       setError(errorMsg);
-      console.error('Ошибка загрузки содержимого:', err);
+
     }
   };
 
@@ -92,7 +104,7 @@ export default function FileViewer({ fileId, fileName, onClose }: FileViewerProp
       setShowDiff(true);
     } catch (err: any) {
       setError('Ошибка при сравнении версий');
-      console.error('Ошибка сравнения:', err);
+
     }
   };
 
@@ -114,14 +126,14 @@ export default function FileViewer({ fileId, fileName, onClose }: FileViewerProp
           'Content-Type': 'multipart/form-data',
         },
       });
-      alert('Новая версия успешно загружена!');
+
       await loadVersions();
       setUploadFile(null);
       setCommitMessage('');
     } catch (err: any) {
       const errorMsg = err.response?.data?.detail || 'Ошибка при загрузке версии';
       setError(errorMsg);
-      console.error('Ошибка загрузки:', err);
+
     } finally {
       setUploading(false);
     }

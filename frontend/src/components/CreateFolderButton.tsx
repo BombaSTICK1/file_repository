@@ -48,12 +48,21 @@ export default function CreateFolderButton({
         variant="outlined" 
         size="small"
         onClick={() => setOpen(true)}
-        sx={{ mr: 1 }}
+        sx={{
+          mr: 1,
+          borderColor: 'divider',
+          backgroundColor: 'rgba(255,255,255,0.72)',
+          '&:hover': {
+            backgroundColor: 'rgba(255,255,255,0.92)',
+          },
+        }}
       >
         Create Folder
       </Button>
       
-      <Dialog open={open} onClose={() => setOpen(false)}>
+      
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
+
         <DialogTitle>Create New Folder</DialogTitle>
         <DialogContent>
           <TextField
@@ -62,7 +71,15 @@ export default function CreateFolderButton({
             onChange={(e) => setFolderName(e.target.value)}
             fullWidth
             autoFocus
+            sx={{
+              mt: 1,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 3,
+                backgroundColor: 'rgba(255,255,255,0.72)',
+              },
+            }}
           />
+
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
@@ -70,8 +87,15 @@ export default function CreateFolderButton({
             onClick={handleSubmit} 
             disabled={!folderName.trim()}
             variant="contained"
+            sx={{
+              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
+              },
+            }}
           >
             Create
+
           </Button>
         </DialogActions>
       </Dialog>

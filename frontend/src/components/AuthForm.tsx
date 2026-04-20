@@ -33,22 +33,19 @@ export default function AuthForm({ language }: AuthFormProps) {
 
     try {
       const endpoint = isLogin ? '/auth/login' : '/auth/register';
-      console.log(`Отправляю запрос на ${endpoint}:`, { username, password });
-
       const res = await client.post(endpoint, { username, password });
 
-      console.log('Ответ сервера:', res.data);
 
       if (res.data.access_token) {
         localStorage.setItem('token', res.data.access_token);
         localStorage.setItem('username', username);
-        console.log('Токен сохранён, перезагружаю страницу...');
         window.location.reload();
+
       } else {
         setError(t.error + ': ' + t.uploadError);
       }
     } catch (error: any) {
-      console.error('Ошибка:', error);
+
       const errorMsg =
         error.response?.data?.detail ||
         (isLogin ? 'Неверные учётные данные' : 'Пользователь уже существует');
@@ -71,27 +68,33 @@ export default function AuthForm({ language }: AuthFormProps) {
         }}
       >
         <Paper
-          elevation={3}
+          elevation={0}
           sx={{
-            p: 4,
-            borderRadius: 2,
+            p: { xs: 3, md: 4.5 },
+            borderRadius: 5,
             width: '100%',
-            backgroundColor: '#ffffff',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            maxWidth: 520,
+            backgroundColor: 'rgba(255,255,255,0.86)',
+            backdropFilter: 'blur(18px)',
+            border: '1px solid rgba(148, 163, 184, 0.18)',
+            boxShadow: '0 24px 60px rgba(15, 23, 42, 0.12)',
           }}
         >
+
           {/* Заголовок с иконкой */}
           <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
             <Box
               sx={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                backgroundColor: '#58a6ff',
+                width: 56,
+                height: 56,
+                borderRadius: '18px',
+                background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                boxShadow: '0 14px 30px rgba(37, 99, 235, 0.28)',
               }}
+
             >
               <LockIcon sx={{ color: 'white', fontSize: 28 }} />
             </Box>
@@ -105,7 +108,8 @@ export default function AuthForm({ language }: AuthFormProps) {
               textAlign: 'center',
               mb: 1,
               fontWeight: 600,
-              color: '#24292e',
+              color: 'text.primary',
+
             }}
           >
             File Repository
@@ -116,7 +120,8 @@ export default function AuthForm({ language }: AuthFormProps) {
             sx={{
               textAlign: 'center',
               mb: 3,
-              color: '#57606a',
+              color: 'text.secondary',
+
             }}
           >
             {isLogin ? 'Войдите в свой аккаунт' : 'Создайте новый аккаунт'}
@@ -143,14 +148,17 @@ export default function AuthForm({ language }: AuthFormProps) {
               autoFocus
               sx={{
                 '& .MuiOutlinedInput-root': {
+                  borderRadius: 3,
+                  backgroundColor: 'rgba(255,255,255,0.72)',
                   '& fieldset': {
-                    borderColor: '#d0d7de',
+                    borderColor: 'rgba(148, 163, 184, 0.28)',
                   },
                   '&:hover fieldset': {
-                    borderColor: '#58a6ff',
+                    borderColor: 'primary.main',
                   },
                 },
               }}
+
             />
 
             <TextField
@@ -165,14 +173,17 @@ export default function AuthForm({ language }: AuthFormProps) {
               required
               sx={{
                 '& .MuiOutlinedInput-root': {
+                  borderRadius: 3,
+                  backgroundColor: 'rgba(255,255,255,0.72)',
                   '& fieldset': {
-                    borderColor: '#d0d7de',
+                    borderColor: 'rgba(148, 163, 184, 0.28)',
                   },
                   '&:hover fieldset': {
-                    borderColor: '#58a6ff',
+                    borderColor: 'primary.main',
                   },
                 },
               }}
+
             />
 
             {/* Основная кнопка */}
@@ -185,12 +196,15 @@ export default function AuthForm({ language }: AuthFormProps) {
                 mt: 3,
                 mb: 2,
                 py: 1.5,
-                backgroundColor: '#238636',
+                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                boxShadow: '0 14px 30px rgba(37, 99, 235, 0.22)',
                 '&:hover': {
-                  backgroundColor: '#2ea043',
+                  background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
                 },
                 fontSize: '16px',
                 fontWeight: 600,
+                borderRadius: 3,
+
               }}
             >
               {loading ? (
@@ -213,13 +227,16 @@ export default function AuthForm({ language }: AuthFormProps) {
               disabled={loading}
               sx={{
                 py: 1.2,
-                borderColor: '#d0d7de',
-                color: '#24292e',
+                borderColor: 'rgba(148, 163, 184, 0.35)',
+                color: 'text.primary',
+                backgroundColor: 'rgba(255,255,255,0.55)',
                 '&:hover': {
-                  backgroundColor: '#f6f8fa',
-                  borderColor: '#58a6ff',
+                  backgroundColor: 'rgba(255,255,255,0.8)',
+                  borderColor: 'primary.main',
                 },
                 fontSize: '14px',
+                borderRadius: 3,
+
               }}
             >
               {isLogin ? t.authRegister : t.authLogin}
@@ -233,7 +250,8 @@ export default function AuthForm({ language }: AuthFormProps) {
               display: 'block',
               textAlign: 'center',
               mt: 3,
-              color: '#57606a',
+              color: 'text.secondary',
+
             }}
           >
             {t.description}
