@@ -2,7 +2,6 @@ services:
   - type: web
     name: file-repo-backend
     env: python
-    region: frankfurt
     plan: free
     buildCommand: "pip install -r backend/app/requirements.txt"
     startCommand: "cd backend/app && uvicorn main:app --host 0.0.0.0 --port $PORT"
@@ -17,15 +16,10 @@ services:
         value: production
       - key: FRONTEND_URL
         sync: false
-    disk:
-      name: storage
-      mountPath: /opt/render/project/src/backend/storage
-      sizeGB: 1
 
   - type: web
     name: file-repo-frontend
     env: static
-    region: frankfurt
     plan: free
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: ./frontend/dist
